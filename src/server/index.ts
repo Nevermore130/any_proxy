@@ -1,87 +1,199 @@
-import http from "node:http";
-import { createApp, broadcastFlow } from "./app.js";
-import { loadConfig } from "./config.js";
+import type { Express } from "express";
+import http, { type Server } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createCaptureApp, type MitmState } from "./app.js";
+import { loadConfig, type RuntimeConfig } from "./config.js";
 import { FlowStore } from "./flowStore.js";
-import { getLanAddresses } from "./lan.js";
-import { startMitmproxy, type MitmproxyRuntime } from "./mitm.js";
+import { getLanAddresses, type LanAddress } from "./lan.js";
+import {
+  startMitmproxy as startMitmproxyProcess,
+  type MitmproxyRuntime,
+  type StartMitmproxyOptions
+} from "./mitm.js";
 
-const config = loadConfig();
-const store = new FlowStore({
-  maxFlows: config.maxFlows,
-  bodyPreviewBytes: config.bodyPreviewBytes
-});
-const lanAddresses = getLanAddresses();
+type Logger = Pick<Console, "error" | "log">;
 
-let mitmRunning = false;
-let mitmMessage = "starting";
-let mitmRuntime: MitmproxyRuntime | undefined;
+export type StartRelaCaptureOptions = {
+  config?: RuntimeConfig;
+  createServer?: (app: Express) => Server;
+  lanAddresses?: LanAddress[];
+  logger?: Logger;
+  registerSignals?: boolean;
+  setExitCode?: (code: number) => void;
+  shutdownTimeoutMs?: number;
+  startMitmproxy?: (options: StartMitmproxyOptions) => MitmproxyRuntime;
+  store?: FlowStore;
+};
 
-const app = createApp({
-  store,
-  lanAddresses,
-  dashboardPort: config.dashboardPort,
-  proxyPort: config.proxyPort,
-  mitmState: () => ({ running: mitmRunning, message: mitmMessage })
-});
+export type RelaCaptureRuntime = {
+  app: Express;
+  close: () => void;
+  closeEvents: () => void;
+  mitmState: () => MitmState;
+  server: Server;
+  store: FlowStore;
+};
 
-const server = http.createServer(app);
+export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCaptureRuntime {
+  const config = options.config ?? loadConfig();
+  const logger = options.logger ?? console;
+  const setExitCode =
+    options.setExitCode ??
+    ((code: number) => {
+      process.exitCode = code;
+    });
+  const store =
+    options.store ??
+    new FlowStore({
+      maxFlows: config.maxFlows,
+      bodyPreviewBytes: config.bodyPreviewBytes
+    });
+  const lanAddresses = options.lanAddresses ?? getLanAddresses();
+  const createServer = options.createServer ?? ((app: Express) => http.createServer(app));
+  const startMitmproxy = options.startMitmproxy ?? startMitmproxyProcess;
+  const registerSignals = options.registerSignals ?? true;
+  const shutdownTimeoutMs = options.shutdownTimeoutMs ?? 2000;
 
-server.on("error", (error: NodeJS.ErrnoException) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(
-      `Dashboard port ${config.dashboardPort} is already in use. Set RELA_CAPTURE_DASHBOARD_PORT to use another port.`
-    );
-    return;
-  }
+  let mitmRunning = false;
+  let mitmMessage = "starting";
+  let mitmRuntime: MitmproxyRuntime | undefined;
+  let dashboardListening = false;
+  let closing = false;
 
-  console.error(error);
-});
-
-server.listen(config.dashboardPort, config.dashboardHost, () => {
-  const dashboardHost = lanAddresses[0]?.address ?? "localhost";
-  console.log(`Rela Capture dashboard: http://${dashboardHost}:${config.dashboardPort}`);
-  console.log(`Phone proxy: ${dashboardHost}:${config.proxyPort}`);
-  console.log("Certificate install page after proxy setup: http://mitm.it");
-});
-
-try {
-  mitmRuntime = startMitmproxy({
+  const captureApp = createCaptureApp({
+    store,
+    lanAddresses,
+    dashboardHost: config.dashboardHost,
+    dashboardPort: config.dashboardPort,
     proxyHost: config.proxyHost,
     proxyPort: config.proxyPort,
-    onEvent: (event) => {
-      const flow = store.ingest(event);
-      if (flow) {
-        broadcastFlow(flow);
-      }
-    },
-    onLog: (message) => {
-      mitmMessage = message;
-      console.log(`[mitmproxy] ${message}`);
-    },
-    onExit: (code, signal) => {
+    mitmState: () => ({ running: mitmRunning, message: mitmMessage })
+  });
+  const server = createServer(captureApp.app);
+
+  const startCaptureProxy = (): void => {
+    try {
+      mitmRuntime = startMitmproxy({
+        proxyHost: config.proxyHost,
+        proxyPort: config.proxyPort,
+        onEvent: (event) => {
+          try {
+            const flow = store.ingest(event);
+            if (flow) {
+              captureApp.broadcastFlow(flow);
+            }
+          } catch (error) {
+            logger.error("Failed to process mitmproxy event", error);
+          }
+        },
+        onLog: (message) => {
+          mitmMessage = message;
+          logger.log(`[mitmproxy] ${message}`);
+        },
+        onExit: (code, signal) => {
+          mitmRunning = false;
+          const exitMessage = `exited with code ${code ?? "null"} signal ${signal ?? "null"}`;
+          if (!shouldPreserveMitmMessage(mitmMessage, code, signal)) {
+            mitmMessage = exitMessage;
+          }
+          logger.log(`[mitmproxy] ${exitMessage}`);
+        }
+      });
+      mitmRunning = true;
+      mitmMessage = "running";
+    } catch (error) {
       mitmRunning = false;
-      const exitMessage = `exited with code ${code ?? "null"} signal ${signal ?? "null"}`;
-      if (!shouldPreserveMitmMessage(mitmMessage, code, signal)) {
-        mitmMessage = exitMessage;
+      mitmMessage = error instanceof Error ? error.message : String(error);
+      logger.error(mitmMessage);
+    }
+  };
+
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      logger.error(
+        `Dashboard port ${config.dashboardPort} is already in use. Set RELA_CAPTURE_DASHBOARD_PORT to use another port.`
+      );
+      if (!dashboardListening) {
+        setExitCode(1);
       }
-      console.log(`[mitmproxy] ${exitMessage}`);
+      return;
+    }
+
+    logger.error(error);
+    if (!dashboardListening) {
+      setExitCode(1);
     }
   });
-  mitmRunning = true;
-  mitmMessage = "running";
-} catch (error) {
-  mitmRunning = false;
-  mitmMessage = error instanceof Error ? error.message : String(error);
-  console.error(mitmMessage);
-}
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.once(signal, () => {
-    mitmRuntime?.stop();
-    server.close(() => {
-      process.exit(0);
-    });
+  server.listen(config.dashboardPort, config.dashboardHost, () => {
+    dashboardListening = true;
+    const dashboardHost = advertisedHost(config.dashboardHost, lanAddresses);
+    const proxyHost = advertisedHost(config.proxyHost, lanAddresses);
+    logger.log(`Rela Capture dashboard: http://${dashboardHost}:${config.dashboardPort}`);
+    logger.log(`Phone proxy: ${proxyHost}:${config.proxyPort}`);
+    logger.log("Certificate install page after proxy setup: http://mitm.it");
+    startCaptureProxy();
   });
+
+  const close = (onClosed?: () => void): void => {
+    if (closing) {
+      onClosed?.();
+      return;
+    }
+
+    closing = true;
+    captureApp.closeEvents();
+    mitmRuntime?.stop();
+
+    let finished = false;
+    const timeout = setTimeout(() => {
+      logger.error("Timed out waiting for dashboard server to close.");
+      finish();
+    }, shutdownTimeoutMs);
+    timeout.unref?.();
+
+    const finish = (): void => {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      clearTimeout(timeout);
+      onClosed?.();
+    };
+
+    try {
+      server.close((error) => {
+        if (error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING") {
+          logger.error(error);
+        }
+        finish();
+      });
+    } catch (error) {
+      logger.error(error);
+      finish();
+    }
+  };
+
+  if (registerSignals) {
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      process.once(signal, () => {
+        close(() => {
+          process.exit(0);
+        });
+      });
+    }
+  }
+
+  return {
+    app: captureApp.app,
+    close,
+    closeEvents: captureApp.closeEvents,
+    mitmState: () => ({ running: mitmRunning, message: mitmMessage }),
+    server,
+    store
+  };
 }
 
 function shouldPreserveMitmMessage(
@@ -90,4 +202,26 @@ function shouldPreserveMitmMessage(
   signal: NodeJS.Signals | null
 ): boolean {
   return code === null && signal === null && /\berror\b/i.test(currentMessage);
+}
+
+function advertisedHost(configuredHost: string | undefined, lanAddresses: LanAddress[]): string {
+  const host = configuredHost?.trim();
+  if (host && !isWildcardHost(host)) {
+    return host;
+  }
+
+  return lanAddresses[0]?.address ?? "localhost";
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::" || host === "[::]";
+}
+
+function isDirectRun(): boolean {
+  const entrypoint = process.argv[1];
+  return Boolean(entrypoint && path.resolve(entrypoint) === fileURLToPath(import.meta.url));
+}
+
+if (isDirectRun()) {
+  startRelaCapture();
 }

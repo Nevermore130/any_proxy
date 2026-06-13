@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FlowStore } from "./flowStore.js";
 import type { LanAddress } from "./lan.js";
-import type { CapturedFlow, FlowFilters, Protocol } from "./types.js";
+import type { CapturedFlow, FlowFilters } from "./types.js";
 
 export type MitmState = {
   running: boolean;
@@ -13,14 +13,37 @@ export type MitmState = {
 export type CreateAppOptions = {
   store: FlowStore;
   lanAddresses: LanAddress[];
+  dashboardHost?: string;
   dashboardPort: number;
+  proxyHost?: string;
   proxyPort: number;
   mitmState: () => MitmState;
 };
 
 type BroadcastPayload = { type: "flow"; flow: CapturedFlow } | { type: "clear" };
 
-const clients = new Set<Response>();
+export type SseClient = {
+  destroyed?: boolean;
+  writableEnded?: boolean;
+  write: (chunk: string) => unknown;
+  end: () => unknown;
+  once: (event: "close" | "error", listener: () => void) => unknown;
+};
+
+export type EventHub = {
+  add: (client: SseClient) => void;
+  remove: (client: SseClient) => void;
+  broadcastFlow: (flow: CapturedFlow) => void;
+  broadcastClear: () => void;
+  closeEvents: () => void;
+};
+
+export type CaptureApp = {
+  app: Express;
+  broadcastFlow: (flow: CapturedFlow) => void;
+  closeEvents: () => void;
+};
+
 const allowedProtocols = new Set<FlowFilters["protocol"]>([
   "all",
   "http",
@@ -39,8 +62,79 @@ const allowedStatusClasses = new Set<FlowFilters["statusClass"]>([
 ]);
 
 export function createApp(options: CreateAppOptions): Express {
+  return createCaptureApp(options).app;
+}
+
+export function createCaptureApp(options: CreateAppOptions): CaptureApp {
+  const eventHub = createEventHub();
+  const app = createExpressApp(options, eventHub);
+
+  return {
+    app,
+    broadcastFlow: eventHub.broadcastFlow,
+    closeEvents: eventHub.closeEvents
+  };
+}
+
+export function createEventHub(): EventHub {
+  const clients = new Set<SseClient>();
+
+  const remove = (client: SseClient): void => {
+    clients.delete(client);
+  };
+
+  const closeClient = (client: SseClient): void => {
+    clients.delete(client);
+    if (client.destroyed || client.writableEnded) {
+      return;
+    }
+
+    try {
+      client.end();
+    } catch {
+      // The connection is already unusable; dropping it is enough.
+    }
+  };
+
+  const broadcast = (payload: BroadcastPayload): void => {
+    const data = `data: ${JSON.stringify(payload)}\n\n`;
+
+    for (const client of Array.from(clients)) {
+      if (client.destroyed || client.writableEnded) {
+        clients.delete(client);
+        continue;
+      }
+
+      try {
+        client.write(data);
+      } catch {
+        closeClient(client);
+      }
+    }
+  };
+
+  return {
+    add: (client) => {
+      clients.add(client);
+      client.once("close", () => remove(client));
+      client.once("error", () => remove(client));
+    },
+    remove,
+    broadcastFlow: (flow) => broadcast({ type: "flow", flow }),
+    broadcastClear: () => broadcast({ type: "clear" }),
+    closeEvents: () => {
+      for (const client of Array.from(clients)) {
+        closeClient(client);
+      }
+    }
+  };
+}
+
+function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Express {
   const app = express();
   const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  const dashboardHost = advertisedHost(options.dashboardHost, options.lanAddresses);
+  const proxyHost = advertisedHost(options.proxyHost, options.lanAddresses);
 
   app.use(express.json());
   app.use(express.static(path.join(rootDir, "public")));
@@ -48,9 +142,9 @@ export function createApp(options: CreateAppOptions): Express {
   app.get("/api/status", (_request, response) => {
     response.json({
       capture: { paused: options.store.isPaused() },
-      dashboard: { port: options.dashboardPort },
+      dashboard: { host: dashboardHost, port: options.dashboardPort },
       proxy: {
-        host: options.lanAddresses[0]?.address ?? "localhost",
+        host: proxyHost,
         port: options.proxyPort,
         certificateUrl: "http://mitm.it"
       },
@@ -85,7 +179,7 @@ export function createApp(options: CreateAppOptions): Express {
 
   app.post("/api/flows/clear", (_request, response) => {
     options.store.clear();
-    broadcast({ type: "clear" });
+    eventHub.broadcastClear();
     response.json({ cleared: true });
   });
 
@@ -108,30 +202,13 @@ export function createApp(options: CreateAppOptions): Express {
     });
     response.write(": connected\n\n");
 
-    clients.add(response);
+    eventHub.add(response);
     request.on("close", () => {
-      clients.delete(response);
+      eventHub.remove(response);
     });
   });
 
   return app;
-}
-
-export function broadcastFlow(flow: CapturedFlow): void {
-  broadcast({ type: "flow", flow });
-}
-
-function broadcast(payload: BroadcastPayload): void {
-  const data = `data: ${JSON.stringify(payload)}\n\n`;
-
-  for (const client of clients) {
-    if (client.destroyed || client.writableEnded) {
-      clients.delete(client);
-      continue;
-    }
-
-    client.write(data);
-  }
 }
 
 function filtersFromQuery(query: Record<string, unknown>): FlowFilters {
@@ -148,7 +225,7 @@ function filtersFromQuery(query: Record<string, unknown>): FlowFilters {
 
 function protocolFromQuery(value: unknown): FlowFilters["protocol"] | undefined {
   const protocol = stringQuery(value);
-  if (!protocol || !allowedProtocols.has(protocol as Protocol | "all")) {
+  if (!protocol || !allowedProtocols.has(protocol as FlowFilters["protocol"])) {
     return undefined;
   }
 
@@ -172,4 +249,17 @@ function stringQuery(value: unknown): string | undefined {
 
   const trimmed = selected.trim();
   return trimmed || undefined;
+}
+
+function advertisedHost(configuredHost: string | undefined, lanAddresses: LanAddress[]): string {
+  const host = configuredHost?.trim();
+  if (host && !isWildcardHost(host)) {
+    return host;
+  }
+
+  return lanAddresses[0]?.address ?? "localhost";
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::" || host === "[::]";
 }
