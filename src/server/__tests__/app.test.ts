@@ -3,9 +3,9 @@ import type http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { createApp, createCaptureApp, createEventHub } from "../app.js";
+import { broadcastFlow, createApp, createCaptureApp, createEventHub } from "../app.js";
 import { FlowStore } from "../flowStore.js";
-import type { RawAddonFlow } from "../types.js";
+import type { CapturedFlow, RawAddonFlow } from "../types.js";
 
 afterEach(() => {
   vi.doUnmock("node:http");
@@ -181,6 +181,39 @@ describe("createApp", () => {
     }
   });
 
+  it("exports a compatibility broadcastFlow for createApp SSE clients", async () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const app = createApp({
+      store,
+      lanAddresses: [],
+      dashboardPort: 5177,
+      proxyPort: 8088,
+      mitmState: () => ({ running: true })
+    });
+    const server = app.listen(0);
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+    try {
+      const address = server.address() as AddressInfo;
+      const sseResponse = await fetch(`http://127.0.0.1:${address.port}/api/events`);
+      expect(sseResponse.body).not.toBeNull();
+
+      reader = sseResponse.body!.getReader();
+      const flowEvent = withTimeout(readUntil(reader, '"type":"flow"'), 1000);
+
+      broadcastFlow(createCapturedFlow({ id: "compat-flow" }));
+
+      const body = await flowEvent;
+      expect(body).toContain('"type":"flow"');
+      expect(body).toContain('"id":"compat-flow"');
+    } finally {
+      await reader?.cancel();
+      await closeServer(server);
+    }
+  });
+
   it("keeps SSE clients isolated per app instance", async () => {
     const first = createCaptureApp({
       store: new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 }),
@@ -345,6 +378,16 @@ function createRawFlow(overrides: Partial<RawAddonFlow> = {}): RawAddonFlow {
     isTlsIntercepted: true,
     ...overrides
   };
+}
+
+function createCapturedFlow(overrides: Partial<RawAddonFlow> = {}): CapturedFlow {
+  const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+  const flow = store.ingest({ eventType: "response", flow: createRawFlow(overrides) });
+  if (!flow) {
+    throw new Error("Failed to create captured flow");
+  }
+
+  return flow;
 }
 
 async function readUntil(

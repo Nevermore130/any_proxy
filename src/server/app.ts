@@ -60,9 +60,16 @@ const allowedStatusClasses = new Set<FlowFilters["statusClass"]>([
   "5xx",
   "none"
 ]);
+let compatibilityBroadcastFlow: ((flow: CapturedFlow) => void) | undefined;
 
 export function createApp(options: CreateAppOptions): Express {
-  return createCaptureApp(options).app;
+  const captureApp = createCaptureApp(options);
+  compatibilityBroadcastFlow = captureApp.broadcastFlow;
+  return captureApp.app;
+}
+
+export function broadcastFlow(flow: CapturedFlow): void {
+  compatibilityBroadcastFlow?.(flow);
 }
 
 export function createCaptureApp(options: CreateAppOptions): CaptureApp {
