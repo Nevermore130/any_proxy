@@ -1,5 +1,7 @@
 node_modules/
 .mitmproxy/
+__pycache__/
+*.py[cod]
 .DS_Store
 coverage/
 dist/
