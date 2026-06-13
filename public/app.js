@@ -6,8 +6,11 @@ const state = {
   actionInFlight: false,
   statusError: null,
   flowsError: null,
-  eventsError: null
+  eventsError: null,
+  eventsDisconnected: false
 };
+
+let latestFlowsRequestId = 0;
 
 const els = {
   statusLine: document.querySelector("#statusLine"),
@@ -27,9 +30,12 @@ const els = {
   details: document.querySelector("#details")
 };
 
-const FILTER_INPUTS = [
+const TEXT_FILTER_INPUTS = [
   els.deviceFilter,
-  els.hostFilter,
+  els.hostFilter
+];
+
+const SELECT_FILTER_INPUTS = [
   els.protocolFilter,
   els.statusFilter
 ];
@@ -99,14 +105,20 @@ function statusLineFor(mitmRunning, mitmMessage) {
 }
 
 async function loadFlows() {
+  const requestId = ++latestFlowsRequestId;
   state.flowsLoading = true;
   state.flowsError = null;
   renderTableState();
+  renderControls();
 
   try {
     const params = filtersToParams();
     const query = params.toString();
     const data = await fetchJson(query ? `/api/flows?${query}` : "/api/flows");
+    if (!isLatestFlowsRequest(requestId)) {
+      return;
+    }
+
     state.flows = Array.isArray(data.flows) ? data.flows : [];
 
     if (state.selectedId && !state.flows.some((flow) => flow.id === state.selectedId)) {
@@ -114,15 +126,28 @@ async function loadFlows() {
       renderEmptyDetails();
     }
   } catch (error) {
+    if (!isLatestFlowsRequest(requestId)) {
+      return;
+    }
+
     state.flowsError = `Could not load requests: ${error.message}`;
     state.flows = [];
   } finally {
+    if (!isLatestFlowsRequest(requestId)) {
+      return;
+    }
+
     state.flowsLoading = false;
     renderRows();
     renderTableState();
     renderBanner();
     updateExportUrl();
+    renderControls();
   }
+}
+
+function isLatestFlowsRequest(requestId) {
+  return requestId === latestFlowsRequestId;
 }
 
 function renderRows() {
@@ -229,8 +254,16 @@ async function showDetails(id) {
 
   try {
     const data = await fetchJson(`/api/flows/${encodeURIComponent(id)}`);
+    if (state.selectedId !== id) {
+      return;
+    }
+
     renderDetails(data.flow);
   } catch (error) {
+    if (state.selectedId !== id) {
+      return;
+    }
+
     els.details.replaceChildren(
       sectionTitle("Request Detail"),
       paragraph(`Could not load flow ${id}: ${error.message}`, "error")
@@ -247,12 +280,19 @@ function renderDetailsLoading(id) {
 
 function renderDetails(flow) {
   const title = sectionTitle(`${flow.method || "UNKNOWN"} ${flow.host || ""}`);
-  const url = paragraph(`${flow.scheme || "http"}://${hostWithPort(flow)}${flow.path || ""}`, "muted breakable");
+  const url = paragraph(
+    `${flow.scheme || "http"}://${hostWithPort(flow)}${flow.path || ""}`,
+    "muted breakable"
+  );
   const meta = document.createElement("dl");
   meta.className = "meta-grid";
   appendMeta(meta, "Device", flow.clientIp);
   appendMeta(meta, "Started", formatDateTime(flow.startedAt));
-  appendMeta(meta, "Status", flow.statusCode === undefined ? "No response" : String(flow.statusCode));
+  appendMeta(
+    meta,
+    "Status",
+    flow.statusCode === undefined ? "No response" : String(flow.statusCode)
+  );
   appendMeta(meta, "Duration", formatDuration(flow.durationMs));
   appendMeta(meta, "Protocol", flow.protocol);
   appendMeta(meta, "TLS", flow.isTlsIntercepted ? "intercepted" : "passthrough");
@@ -349,11 +389,17 @@ function connectEvents() {
   const events = new EventSource("/api/events");
 
   events.onopen = () => {
+    const shouldResync = state.eventsDisconnected;
+    state.eventsDisconnected = false;
     state.eventsError = null;
     renderBanner();
+    if (shouldResync) {
+      loadFlows();
+    }
   };
 
   events.onerror = () => {
+    state.eventsDisconnected = true;
     state.eventsError = "Live updates disconnected; retrying in the background.";
     renderBanner();
   };
@@ -461,6 +507,7 @@ async function runAction(action) {
   } finally {
     state.actionInFlight = false;
     renderControls();
+    renderBanner();
   }
 }
 
@@ -570,11 +617,14 @@ function debounce(fn, waitMs) {
 
 const reloadFlows = debounce(loadFlows, 150);
 
-for (const input of FILTER_INPUTS) {
+for (const input of TEXT_FILTER_INPUTS) {
   input.addEventListener("input", () => {
     updateExportUrl();
     reloadFlows();
   });
+}
+
+for (const input of SELECT_FILTER_INPUTS) {
   input.addEventListener("change", () => {
     updateExportUrl();
     loadFlows();
