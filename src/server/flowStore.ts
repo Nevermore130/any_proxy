@@ -1,6 +1,13 @@
 import { createBodyPreview } from "./bodyPreview.js";
 import { flowMatchesFilters } from "./filters.js";
-import type { AddonFlowEvent, CapturedFlow, FlowFilters, FlowStoreOptions } from "./types.js";
+import type {
+  AddonFlowEvent,
+  BodyPreview,
+  CapturedFlow,
+  FlowFilters,
+  FlowStoreOptions,
+  RawBodyEncoding
+} from "./types.js";
 
 export class FlowStore {
   private readonly flows = new Map<string, CapturedFlow>();
@@ -42,15 +49,17 @@ export class FlowStore {
       statusCode: event.flow.statusCode ?? existing?.statusCode,
       requestHeaders: event.flow.requestHeaders ?? existing?.requestHeaders ?? [],
       responseHeaders: event.flow.responseHeaders ?? existing?.responseHeaders ?? [],
-      requestBodyPreview: createBodyPreview(
-        event.flow.requestBody ?? existing?.requestBodyPreview.preview ?? null,
+      requestBodyPreview: this.nextBodyPreview(
+        event.flow.requestBody,
         event.flow.requestContentType,
-        this.options.bodyPreviewBytes
+        event.flow.requestBodyEncoding,
+        existing?.requestBodyPreview
       ),
-      responseBodyPreview: createBodyPreview(
-        event.flow.responseBody ?? existing?.responseBodyPreview.preview ?? null,
+      responseBodyPreview: this.nextBodyPreview(
+        event.flow.responseBody,
         event.flow.responseContentType,
-        this.options.bodyPreviewBytes
+        event.flow.responseBodyEncoding,
+        existing?.responseBodyPreview
       ),
       error: event.flow.error ?? existing?.error,
       isTlsIntercepted: event.flow.isTlsIntercepted
@@ -88,4 +97,27 @@ export class FlowStore {
       }
     }
   }
+
+  private nextBodyPreview(
+    body: string | null | undefined,
+    contentType: string | undefined,
+    encoding: RawBodyEncoding | undefined,
+    existing: BodyPreview | undefined
+  ): BodyPreview {
+    if (body === undefined) {
+      return existing ?? createEmptyBodyPreview(contentType);
+    }
+
+    return createBodyPreview(body, contentType, this.options.bodyPreviewBytes, encoding);
+  }
+}
+
+function createEmptyBodyPreview(contentType: string | undefined): BodyPreview {
+  return {
+    kind: "empty",
+    sizeBytes: 0,
+    preview: "",
+    truncated: false,
+    contentType: contentType || undefined
+  };
 }

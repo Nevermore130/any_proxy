@@ -2,6 +2,8 @@ export type Protocol = "http" | "https" | "websocket" | "unknown";
 
 export type HeaderPair = [name: string, value: string];
 
+export type RawBodyEncoding = "text" | "base64";
+
 export type BodyPreview = {
   kind: "empty" | "text" | "base64";
   sizeBytes: number;
@@ -26,6 +28,8 @@ export type RawAddonFlow = {
   responseHeaders?: HeaderPair[];
   requestBody?: string | null;
   responseBody?: string | null;
+  requestBodyEncoding?: RawBodyEncoding;
+  responseBodyEncoding?: RawBodyEncoding;
   requestContentType?: string;
   responseContentType?: string;
   error?: string;
