@@ -13,7 +13,10 @@ export type MitmdumpBinaryResolution =
   | { ok: false; message: string; path?: never };
 
 export type ResolveMitmdumpBinaryOptions = {
+  /** Complete environment snapshot, mainly useful for deterministic tests. */
   env?: Env;
+  /** Overrides merged onto process.env before resolving the binary. */
+  envOverrides?: Env;
   pathLookup?: (name: string) => string | undefined;
 };
 
@@ -23,7 +26,7 @@ export type StartMitmproxyOptions = {
   onEvent: (event: AddonFlowEvent) => void;
   onLog: (line: string) => void;
   onExit: (code: number | null, signal: NodeJS.Signals | null) => void;
-  env?: Env;
+  envOverrides?: Env;
   rootDir?: string;
 };
 
@@ -33,13 +36,17 @@ export type MitmproxyRuntime = {
 };
 
 const MITMDUMP_MISSING_MESSAGE =
-  "mitmdump was not found. Install mitmproxy with `brew install mitmproxy`, " +
+  "mitmdump was not found. Install mitmproxy with `brew install mitmproxy` or " +
+  "`pipx install mitmproxy`, " +
   "or set RELA_CAPTURE_MITMDUMP_BIN to the mitmdump executable path.";
 
 export function resolveMitmdumpBinary(
   options: ResolveMitmdumpBinaryOptions = {}
 ): MitmdumpBinaryResolution {
-  const env = options.env ?? process.env;
+  const env = {
+    ...(options.env ?? process.env),
+    ...(options.envOverrides ?? {})
+  };
   const configuredPath = env.RELA_CAPTURE_MITMDUMP_BIN;
   if (configuredPath) {
     return { ok: true, path: configuredPath };
@@ -80,7 +87,10 @@ export function lookupPath(name: string, env: Env = process.env): string | undef
 }
 
 export function startMitmproxy(options: StartMitmproxyOptions): MitmproxyRuntime {
-  const env = options.env ?? process.env;
+  const env = {
+    ...process.env,
+    ...(options.envOverrides ?? {})
+  };
   const resolution = resolveMitmdumpBinary({ env });
   if (!resolution.ok) {
     throw new Error(resolution.message);
@@ -100,8 +110,8 @@ export function startMitmproxy(options: StartMitmproxyOptions): MitmproxyRuntime
       options.proxyHost,
       "--listen-port",
       String(options.proxyPort),
-      "--confdir",
-      confDir,
+      "--set",
+      `confdir=${confDir}`,
       "-s",
       addonPath
     ],
@@ -123,12 +133,22 @@ export function startMitmproxy(options: StartMitmproxyOptions): MitmproxyRuntime
   });
   readLines(child.stderr, options.onLog);
 
+  let finalized = false;
+  const finalize = (code: number | null, signal: NodeJS.Signals | null): void => {
+    if (finalized) {
+      return;
+    }
+
+    finalized = true;
+    options.onExit(code, signal);
+  };
+
   child.once("error", (error) => {
     options.onLog(`mitmdump error: ${error.message}`);
+    finalize(null, null);
   });
-  child.once("exit", (code, signal) => {
-    options.onExit(code, signal);
-  });
+  child.once("exit", finalize);
+  child.once("close", finalize);
 
   return {
     child,
