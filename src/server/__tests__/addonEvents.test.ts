@@ -86,6 +86,36 @@ describe("parseAddonLine", () => {
     ).toBeUndefined();
   });
 
+  it("rejects invalid content type fields", () => {
+    expect(
+      parseAddonLine(
+        eventLine({
+          eventType: "request",
+          flow: { ...validFlow, requestBody: "hello", requestContentType: {} }
+        })
+      )
+    ).toBeUndefined();
+    expect(
+      parseAddonLine(
+        eventLine({
+          eventType: "response",
+          flow: { ...validFlow, responseBody: "hello", responseContentType: [] }
+        })
+      )
+    ).toBeUndefined();
+  });
+
+  it("rejects invalid error fields", () => {
+    expect(
+      parseAddonLine(
+        eventLine({
+          eventType: "error",
+          flow: { ...validFlow, error: { message: "connection reset" } }
+        })
+      )
+    ).toBeUndefined();
+  });
+
   it("rejects non-finite optional numeric fields", () => {
     const line = `${ADDON_EVENT_PREFIX}{"eventType":"response","flow":{"id":"abc","clientIp":"192.168.1.20","startedAtEpochMs":1781337600000,"protocol":"https","method":"GET","scheme":"https","host":"api.example.com","path":"/v1/me","requestHeaders":[],"isTlsIntercepted":true,"durationMs":1e999}}`;
 

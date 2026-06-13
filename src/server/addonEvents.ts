@@ -37,6 +37,9 @@ export function parseAddonLine(line: string): AddonFlowEvent | undefined {
       !isOptionalBody(flow.responseBody) ||
       !isOptionalBodyEncoding(flow.requestBodyEncoding) ||
       !isOptionalBodyEncoding(flow.responseBodyEncoding) ||
+      !isOptionalString(flow.requestContentType) ||
+      !isOptionalString(flow.responseContentType) ||
+      !isOptionalString(flow.error) ||
       !isOptionalHeaderPairs(flow.requestHeaders) ||
       !isOptionalHeaderPairs(flow.responseHeaders)
     ) {
@@ -79,6 +82,10 @@ function isOptionalFiniteNumber(value: unknown): value is number | undefined {
 
 function isOptionalBody(value: unknown): value is string | null | undefined {
   return value === undefined || value === null || typeof value === "string";
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
 }
 
 function isOptionalBodyEncoding(value: unknown): value is "text" | "base64" | undefined {
