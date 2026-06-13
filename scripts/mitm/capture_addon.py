@@ -24,15 +24,31 @@ def is_textual_content_type(content_type: str) -> bool:
     )
 
 
+def decoded_content(message: Any) -> bytes | None:
+    get_content = getattr(message, "get_content", None)
+    if callable(get_content):
+        try:
+            content = get_content(strict=False)
+            if content is not None:
+                return content
+        except Exception:
+            pass
+
+    return getattr(message, "raw_content", None)
+
+
 def body_payload(message: Any) -> tuple[str | None, str]:
-    raw = getattr(message, "raw_content", None)
-    if raw is None:
+    content = decoded_content(message)
+    if content is None:
         return None, "text"
 
-    limited = raw[:MAX_BODY_BYTES]
+    limited = content[:MAX_BODY_BYTES]
     content_type = message.headers.get("content-type", "")
     if is_textual_content_type(content_type):
-        return limited.decode("utf-8", errors="replace"), "text"
+        try:
+            return limited.decode("utf-8"), "text"
+        except UnicodeDecodeError:
+            pass
 
     return base64.b64encode(limited).decode("ascii"), "base64"
 
