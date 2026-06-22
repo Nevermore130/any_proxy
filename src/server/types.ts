@@ -71,4 +71,5 @@ export type FlowFilters = {
 export type FlowStoreOptions = {
   maxFlows: number;
   bodyPreviewBytes: number;
+  flowTtlMs?: number;
 };

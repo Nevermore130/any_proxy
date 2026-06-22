@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlowStore } from "../flowStore.js";
 import type { AddonFlowEvent } from "../types.js";
 
@@ -22,6 +22,10 @@ const requestEvent: AddonFlowEvent = {
 };
 
 describe("FlowStore", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("adds request events and updates with response events", () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     store.ingest(requestEvent);
@@ -121,6 +125,41 @@ describe("FlowStore", () => {
 
     expect(store.getFlow("one")).toBeUndefined();
     expect(store.listFlows({}).map((flow) => flow.id)).toEqual(["three", "two"]);
+  });
+
+  it("removes flows older than the retention window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-22T10:00:00.000Z"));
+    const store = new FlowStore({
+      maxFlows: 10,
+      bodyPreviewBytes: 1024,
+      flowTtlMs: 60_000
+    });
+
+    store.ingest({
+      ...requestEvent,
+      flow: {
+        ...requestEvent.flow,
+        id: "expired",
+        startedAtEpochMs: Date.now() - 61_000
+      }
+    });
+    store.ingest({
+      ...requestEvent,
+      flow: {
+        ...requestEvent.flow,
+        id: "fresh",
+        startedAtEpochMs: Date.now() - 60_000
+      }
+    });
+
+    expect(store.getFlow("expired")).toBeUndefined();
+    expect(store.listFlows({}).map((flow) => flow.id)).toEqual(["fresh"]);
+
+    vi.setSystemTime(new Date("2026-06-22T10:00:01.000Z"));
+
+    expect(store.listFlows({})).toEqual([]);
+    expect(store.size()).toBe(0);
   });
 
   it("does not store new events while paused", () => {

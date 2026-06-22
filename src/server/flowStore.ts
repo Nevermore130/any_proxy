@@ -75,10 +75,12 @@ export class FlowStore {
   }
 
   getFlow(id: string): CapturedFlow | undefined {
+    this.trim();
     return this.flows.get(id);
   }
 
   listFlows(filters: FlowFilters): CapturedFlow[] {
+    this.trim();
     return this.order
       .map((id) => this.flows.get(id))
       .filter((flow): flow is CapturedFlow => Boolean(flow))
@@ -86,16 +88,33 @@ export class FlowStore {
   }
 
   size(): number {
+    this.trim();
     return this.flows.size;
   }
 
-  private trim(): void {
+  private trim(nowEpochMs = Date.now()): void {
+    for (const id of Array.from(this.order)) {
+      const flow = this.flows.get(id);
+      if (!flow || this.isExpired(flow, nowEpochMs)) {
+        this.flows.delete(id);
+        this.order.splice(this.order.indexOf(id), 1);
+      }
+    }
+
     while (this.order.length > this.options.maxFlows) {
       const removed = this.order.pop();
       if (removed) {
         this.flows.delete(removed);
       }
     }
+  }
+
+  private isExpired(flow: CapturedFlow, nowEpochMs: number): boolean {
+    if (!this.options.flowTtlMs) {
+      return false;
+    }
+
+    return nowEpochMs - Date.parse(flow.startedAt) > this.options.flowTtlMs;
   }
 
   private nextBodyPreview(

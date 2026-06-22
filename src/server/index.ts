@@ -47,7 +47,8 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
     options.store ??
     new FlowStore({
       maxFlows: config.maxFlows,
-      bodyPreviewBytes: config.bodyPreviewBytes
+      bodyPreviewBytes: config.bodyPreviewBytes,
+      flowTtlMs: config.flowTtlMs
     });
   const lanAddresses = options.lanAddresses ?? getLanAddresses();
   const createServer = options.createServer ?? ((app: Express) => http.createServer(app));

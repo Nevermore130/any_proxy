@@ -6,6 +6,7 @@ export type RuntimeConfig = {
   proxyPort: number;
   maxFlows: number;
   bodyPreviewBytes: number;
+  flowTtlMs: number;
   includeHosts: string[];
   excludeHosts: string[];
   relayTargetOrigin: string;
@@ -73,8 +74,9 @@ export function loadConfig(): RuntimeConfig {
     dashboardPort: intFromEnv("RELA_CAPTURE_DASHBOARD_PORT", 5177),
     proxyHost: process.env.RELA_CAPTURE_PROXY_HOST || "0.0.0.0",
     proxyPort: intFromEnv("RELA_CAPTURE_PROXY_PORT", 8088),
-    maxFlows: intFromEnv("RELA_CAPTURE_MAX_FLOWS", 2000),
-    bodyPreviewBytes: intFromEnv("RELA_CAPTURE_BODY_PREVIEW_BYTES", 65536),
+    maxFlows: intFromEnv("RELA_CAPTURE_MAX_FLOWS", 5000),
+    bodyPreviewBytes: intFromEnv("RELA_CAPTURE_BODY_PREVIEW_BYTES", 32768),
+    flowTtlMs: intFromEnv("RELA_CAPTURE_FLOW_TTL_SECONDS", 600) * 1000,
     includeHosts: listFromEnv("RELA_CAPTURE_INCLUDE_HOSTS"),
     excludeHosts: listFromEnv("RELA_CAPTURE_EXCLUDE_HOSTS"),
     relayTargetOrigin: originFromEnv("RELA_RELAY_TARGET_ORIGIN", "https://api.rela.me"),

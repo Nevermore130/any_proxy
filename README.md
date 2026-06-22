@@ -183,8 +183,9 @@ RELA_CAPTURE_DASHBOARD_HOST=0.0.0.0
 RELA_CAPTURE_DASHBOARD_PORT=5177
 RELA_CAPTURE_PROXY_HOST=0.0.0.0
 RELA_CAPTURE_PROXY_PORT=8088
-RELA_CAPTURE_MAX_FLOWS=2000
-RELA_CAPTURE_BODY_PREVIEW_BYTES=65536
+RELA_CAPTURE_MAX_FLOWS=5000
+RELA_CAPTURE_BODY_PREVIEW_BYTES=32768
+RELA_CAPTURE_FLOW_TTL_SECONDS=600
 RELA_CAPTURE_MITMDUMP_BIN=/absolute/path/to/mitmdump
 RELA_CAPTURE_ADVERTISE_HOST=<server-public-ip-or-domain>
 RELA_CAPTURE_MITMPROXY_BLOCK_GLOBAL=true
@@ -192,6 +193,8 @@ RELA_RELAY_TARGET_ORIGIN=https://api.rela.me
 ```
 
 `RELA_CAPTURE_MITMPROXY_BLOCK_GLOBAL=true` keeps mitmproxy's local default of blocking public IP clients. Docker Compose sets it to `false` so phones can reach the proxy through a Tencent Cloud public IP.
+
+`RELA_CAPTURE_FLOW_TTL_SECONDS=600` keeps captured requests for 10 minutes. Expired flows are removed automatically, and `RELA_CAPTURE_MAX_FLOWS` still caps the total retained request count.
 
 Useful API endpoints:
 
