@@ -95,6 +95,8 @@ describe("startMitmproxy", () => {
       "8088",
       "--set",
       `confdir=${path.join(rootDir, ".mitmproxy")}`,
+      "--set",
+      "block_global=true",
       "-s",
       path.join(rootDir, "scripts", "mitm", "capture_addon.py")
     ]);
@@ -105,6 +107,25 @@ describe("startMitmproxy", () => {
       RELA_CAPTURE_TEST_FLAG: "1"
     });
     expect(options?.stdio).toEqual(["ignore", "pipe", "pipe"]);
+  });
+
+  it("can allow public proxy clients when requested", () => {
+    const child = createFakeChild();
+    spawnMock.mockReturnValue(child as unknown as ChildProcess);
+
+    startMitmproxy({
+      proxyHost: "0.0.0.0",
+      proxyPort: 8088,
+      rootDir: createTempRootDir(),
+      blockGlobal: false,
+      envOverrides: { RELA_CAPTURE_MITMDUMP_BIN: "/custom/mitmdump" },
+      onEvent: vi.fn(),
+      onLog: vi.fn(),
+      onExit: vi.fn()
+    });
+
+    const [, args] = spawnMock.mock.calls[0];
+    expect(args).toContain("block_global=false");
   });
 
   it("routes parsed stdout events to onEvent and normal stdout or stderr to onLog", () => {

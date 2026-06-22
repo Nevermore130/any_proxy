@@ -15,7 +15,10 @@ let latestFlowsRequestId = 0;
 const els = {
   statusLine: document.querySelector("#statusLine"),
   proxyAddress: document.querySelector("#proxyAddress"),
+  relayAddress: document.querySelector("#relayAddress"),
   certificateUrl: document.querySelector("#certificateUrl"),
+  mobileSetupLink: document.querySelector("#mobileSetupLink"),
+  setupQr: document.querySelector("#setupQr"),
   pauseButton: document.querySelector("#pauseButton"),
   clearButton: document.querySelector("#clearButton"),
   exportButton: document.querySelector("#exportButton"),
@@ -76,12 +79,18 @@ async function loadStatus() {
 
     const proxyHost = status.proxy?.host || "unknown-host";
     const proxyPort = status.proxy?.port || "unknown-port";
+    const relayUrl = status.relay?.rela?.baseUrl || "/relay/rela";
     const certificateUrl = status.proxy?.certificateUrl || "http://mitm.it";
+    const mobileSetupUrl = status.onboarding?.mobileSetupUrl || "/mobile-setup";
+    const qrCodeUrl = status.onboarding?.qrCodeUrl || "/api/onboarding/qr.svg";
     const mitmRunning = Boolean(status.mitmproxy?.running);
     const mitmMessage = status.mitmproxy?.message;
 
     els.proxyAddress.textContent = `${proxyHost}:${proxyPort}`;
+    els.relayAddress.textContent = relayUrl;
     els.certificateUrl.textContent = certificateUrl;
+    els.mobileSetupLink.href = mobileSetupUrl;
+    els.setupQr.src = qrCodeUrl;
     els.statusLine.textContent = statusLineFor(mitmRunning, mitmMessage);
     els.statusLine.dataset.state = mitmRunning ? (state.paused ? "paused" : "running") : "error";
   } catch (error) {

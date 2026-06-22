@@ -1,0 +1,14 @@
+.git
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules
+dist
+coverage
+.mitmproxy
+*.log
+logs
+__pycache__
+*.py[cod]
+docs/superpowers/plans

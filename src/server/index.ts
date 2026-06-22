@@ -64,10 +64,12 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
   const captureApp = createCaptureApp({
     store,
     lanAddresses,
+    advertiseHost: config.advertiseHost,
     dashboardHost: config.dashboardHost,
     dashboardPort: config.dashboardPort,
     proxyHost: config.proxyHost,
     proxyPort: config.proxyPort,
+    relayTargetOrigin: config.relayTargetOrigin,
     mitmState: () => ({ running: mitmRunning, message: mitmMessage })
   });
   const server = createServer(captureApp.app);
@@ -77,6 +79,7 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
       mitmRuntime = startMitmproxy({
         proxyHost: config.proxyHost,
         proxyPort: config.proxyPort,
+        blockGlobal: config.mitmproxyBlockGlobal,
         onEvent: (event) => {
           try {
             const flow = store.ingest(event);
@@ -128,9 +131,10 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
 
   server.listen(config.dashboardPort, config.dashboardHost, () => {
     dashboardListening = true;
-    const dashboardHost = advertisedHost(config.dashboardHost, lanAddresses);
-    const proxyHost = advertisedHost(config.proxyHost, lanAddresses);
+    const dashboardHost = advertisedHost(config.advertiseHost ?? config.dashboardHost, lanAddresses);
+    const proxyHost = advertisedHost(config.advertiseHost ?? config.proxyHost, lanAddresses);
     logger.log(`Rela Capture dashboard: http://${dashboardHost}:${config.dashboardPort}`);
+    logger.log(`Rela App relay: http://${dashboardHost}:${config.dashboardPort}/relay/rela -> ${config.relayTargetOrigin}`);
     logger.log(`Phone proxy: ${proxyHost}:${config.proxyPort}`);
     logger.log("Certificate install page after proxy setup: http://mitm.it");
     startCaptureProxy();

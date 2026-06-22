@@ -163,7 +163,9 @@ h3 {
 
 .setup {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(160px, 220px) minmax(0, 1fr);
+  grid-template-columns:
+    minmax(160px, 220px) minmax(220px, 1fr) minmax(140px, 180px) 112px
+    minmax(220px, 1fr);
   gap: 16px;
   padding: 12px 20px;
   border-bottom: 1px solid #d6e4f5;
@@ -186,6 +188,21 @@ h3 {
   color: #344257;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.setup__qr a {
+  display: inline-flex;
+  margin-top: 4px;
+  border: 1px solid #c5d5ea;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 4px;
+}
+
+.setup__qr img {
+  display: block;
+  width: 76px;
+  height: 76px;
 }
 
 .label,
@@ -486,6 +503,11 @@ pre {
   .actions {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .setup__qr img {
+    width: 96px;
+    height: 96px;
   }
 
   table {

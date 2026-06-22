@@ -4,18 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
+    "start:prod": "node dist/server/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.0",
+    "@types/qrcode": "^1.5.6",
     "@types/supertest": "^6.0.3",
     "supertest": "^7.1.1",
     "tsx": "^4.20.3",

@@ -26,6 +26,7 @@ export type StartMitmproxyOptions = {
   onEvent: (event: AddonFlowEvent) => void;
   onLog: (line: string) => void;
   onExit: (code: number | null, signal: NodeJS.Signals | null) => void;
+  blockGlobal?: boolean;
   envOverrides?: Env;
   rootDir?: string;
 };
@@ -112,6 +113,8 @@ export function startMitmproxy(options: StartMitmproxyOptions): MitmproxyRuntime
       String(options.proxyPort),
       "--set",
       `confdir=${confDir}`,
+      "--set",
+      `block_global=${(options.blockGlobal ?? true) ? "true" : "false"}`,
       "-s",
       addonPath
     ],
