@@ -1,3 +1,7 @@
+import { bodyCopyButtonState } from "./bodyActions.js";
+import { detailTabButtonState } from "./detailTabs.js";
+import { parseJsonBodyPreview, summarizeJsonValue } from "./jsonBody.js";
+
 const state = {
   flows: [],
   selectedId: null,
@@ -267,68 +271,161 @@ async function showDetails(id) {
 
 function renderDetailsLoading(id) {
   els.details.replaceChildren(
-    sectionTitle("Request Detail"),
-    paragraph(`Loading ${id}...`, "muted")
+    sectionTitle("Request Detail", "details-title"),
+    paragraph(`Loading ${id}...`, "muted detail-loading")
   );
 }
 
 function renderDetails(flow) {
-  const title = sectionTitle(`${flow.method || "UNKNOWN"} ${flow.host || ""}`);
+  const title = sectionTitle(`${flow.method || "UNKNOWN"} ${flow.host || ""}`, "details-title");
   const url = paragraph(
     `${flow.scheme || "http"}://${hostWithPort(flow)}${flow.path || ""}`,
-    "muted breakable"
+    "muted breakable request-url"
   );
+
+  const tabShell = renderDetailTabs(flow);
+  const nodes = [title, url, tabShell];
+  if (flow.error) {
+    tabShell
+      .querySelector('[data-detail-panel="response"]')
+      ?.prepend(paragraph(flow.error, "error"));
+  }
+
+  els.details.replaceChildren(...nodes);
+}
+
+function renderDetailTabs(flow) {
+  const shell = document.createElement("div");
+  shell.className = "detail-tab-shell";
+
+  const tabList = document.createElement("div");
+  tabList.className = "detail-tab-list";
+  tabList.setAttribute("role", "tablist");
+  tabList.setAttribute("aria-label", "Request detail sections");
+
+  const panels = {
+    request: renderRequestPanel(flow),
+    response: renderResponsePanel(flow)
+  };
+
+  const setActiveTab = (activeTab) => {
+    for (const tab of detailTabButtonState(activeTab)) {
+      const button = tabList.querySelector(`#${tab.tabId}`);
+      const panel = panels[tab.id];
+      button?.setAttribute("aria-selected", String(tab.selected));
+      button?.setAttribute("tabindex", tab.selected ? "0" : "-1");
+      if (panel) {
+        panel.hidden = !tab.selected;
+      }
+    }
+  };
+
+  for (const tab of detailTabButtonState("request")) {
+    const button = document.createElement("button");
+    button.id = tab.tabId;
+    button.className = "detail-tab";
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.textContent = tab.label;
+    button.setAttribute("aria-controls", tab.panelId);
+    button.addEventListener("click", () => setActiveTab(tab.id));
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        setActiveTab(tab.id === "request" ? "response" : "request");
+      }
+    });
+    tabList.append(button);
+  }
+
+  shell.append(tabList, panels.request, panels.response);
+  setActiveTab("request");
+  return shell;
+}
+
+function renderRequestPanel(flow) {
+  const panel = detailPanel("request");
   const meta = document.createElement("dl");
   meta.className = "meta-grid";
   appendMeta(meta, "Device", flow.clientIp);
   appendMeta(meta, "Started", formatDateTime(flow.startedAt));
+  appendMeta(meta, "Method", flow.method || "UNKNOWN");
+  appendMeta(meta, "Protocol", flow.protocol);
+
+  panel.append(
+    meta,
+    detailHeading("Headers"),
+    renderHeaders(flow.requestHeaders, "Request Headers"),
+    detailHeading("Body", createBodyCopyButton(flow.requestBodyPreview, "Request Body")),
+    renderBody(flow.requestBodyPreview, "Request Body")
+  );
+  return panel;
+}
+
+function renderResponsePanel(flow) {
+  const panel = detailPanel("response");
+  const meta = document.createElement("dl");
+  meta.className = "meta-grid";
   appendMeta(
     meta,
     "Status",
     flow.statusCode === undefined ? "No response" : String(flow.statusCode)
   );
   appendMeta(meta, "Duration", formatDuration(flow.durationMs));
-  appendMeta(meta, "Protocol", flow.protocol);
   appendMeta(meta, "TLS", flow.isTlsIntercepted ? "intercepted" : "passthrough");
+  appendMeta(meta, "Host", hostWithPort(flow));
 
-  const nodes = [title, url, meta];
-  if (flow.error) {
-    nodes.push(paragraph(flow.error, "error"));
-  }
-
-  nodes.push(
-    detailHeading("Request Headers"),
-    renderHeaders(flow.requestHeaders),
-    detailHeading("Request Body"),
-    renderBody(flow.requestBodyPreview),
-    detailHeading("Response Headers"),
-    renderHeaders(flow.responseHeaders),
-    detailHeading("Response Body"),
-    renderBody(flow.responseBodyPreview)
+  panel.append(
+    meta,
+    detailHeading("Headers"),
+    renderHeaders(flow.responseHeaders, "Response Headers"),
+    detailHeading("Body", createBodyCopyButton(flow.responseBodyPreview, "Response Body")),
+    renderBody(flow.responseBodyPreview, "Response Body")
   );
+  return panel;
+}
 
-  els.details.replaceChildren(...nodes);
+function detailPanel(id) {
+  const panel = document.createElement("section");
+  panel.id = `detail-panel-${id}`;
+  panel.className = "detail-tab-panel";
+  panel.dataset.detailPanel = id;
+  panel.setAttribute("role", "tabpanel");
+  panel.setAttribute("aria-labelledby", `detail-tab-${id}`);
+  return panel;
 }
 
 function renderEmptyDetails() {
   const wrapper = document.createElement("div");
   wrapper.className = "details__empty";
   wrapper.append(
-    sectionTitle("Request Detail"),
+    sectionTitle("Request Detail", "details-title"),
     paragraph("Select a request to inspect headers, body previews, and capture errors.")
   );
   els.details.replaceChildren(wrapper);
 }
 
-function sectionTitle(text) {
+function sectionTitle(text, className = "") {
   const title = document.createElement("h2");
+  if (className) {
+    title.className = className;
+  }
   title.textContent = text;
   return title;
 }
 
-function detailHeading(text) {
-  const heading = document.createElement("h3");
-  heading.textContent = text;
+function detailHeading(text, action = null) {
+  const heading = document.createElement("div");
+  heading.className = "detail-heading";
+
+  const title = document.createElement("h3");
+  title.textContent = text;
+  heading.append(title);
+
+  if (action) {
+    heading.append(action);
+  }
+
   return heading;
 }
 
@@ -341,18 +438,49 @@ function paragraph(text, className = "") {
   return element;
 }
 
-function renderHeaders(headers) {
+function renderHeaders(headers, label = "Headers") {
   if (!Array.isArray(headers) || headers.length === 0) {
-    return paragraph("No headers captured.", "muted");
+    return paragraph(`No ${label.toLowerCase()} captured.`, "muted detail-empty-line");
   }
 
-  const headerText = headers.map(([name, value]) => `${name}: ${value}`).join("\n");
-  return pre(headerText);
+  const wrapper = document.createElement("div");
+  wrapper.className = "header-viewer";
+
+  const meta = document.createElement("div");
+  meta.className = "header-viewer__meta";
+  meta.textContent = `${headers.length} ${headers.length === 1 ? "header" : "headers"}`;
+
+  const list = document.createElement("div");
+  list.className = "header-list";
+
+  for (const [name, value] of headers) {
+    const row = document.createElement("div");
+    row.className = "header-row";
+
+    const key = document.createElement("span");
+    key.className = "header-name";
+    key.textContent = name;
+
+    const headerValue = document.createElement("span");
+    headerValue.className = "header-value";
+    headerValue.textContent = value;
+
+    row.append(key, headerValue);
+    list.append(row);
+  }
+
+  wrapper.append(meta, list);
+  return wrapper;
 }
 
-function renderBody(body) {
+function renderBody(body, label = "Body") {
   if (!body || body.kind === "empty") {
-    return paragraph("No body captured.", "muted");
+    return paragraph(`No ${label.toLowerCase()} captured.`, "muted detail-empty-line");
+  }
+
+  const json = parseJsonBodyPreview(body);
+  if (json.ok) {
+    return renderJsonBody(json.value, body);
   }
 
   const meta = [
@@ -362,7 +490,195 @@ function renderBody(body) {
     body.truncated ? "truncated" : ""
   ].filter(Boolean);
   const text = meta.length ? `${meta.join(" | ")}\n\n${body.preview}` : body.preview;
-  return pre(text);
+  return renderRawBody(text, body);
+}
+
+function createBodyCopyButton(body, label) {
+  const state = bodyCopyButtonState(body, label);
+  if (!state.enabled) {
+    return null;
+  }
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "body-copy-button";
+  button.textContent = state.idleLabel;
+  button.setAttribute("aria-label", state.ariaLabel);
+  button.title = state.ariaLabel;
+
+  button.addEventListener("click", async () => {
+    try {
+      await copyText(state.text);
+      showCopyState(button, state.successLabel);
+    } catch {
+      showCopyState(button, state.failedLabel, true);
+    }
+  });
+
+  return button;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.className = "copy-fallback-textarea";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+
+  if (!copied) {
+    throw new Error("Copy command failed");
+  }
+}
+
+function showCopyState(button, label, isError = false) {
+  button.textContent = label;
+  button.classList.toggle("is-error", isError);
+  window.clearTimeout(button.copyStateTimer);
+  button.copyStateTimer = window.setTimeout(() => {
+    button.textContent = "Copy";
+    button.classList.remove("is-error");
+  }, 1200);
+}
+
+function renderJsonBody(value, body) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "body-viewer json-viewer";
+
+  const meta = document.createElement("div");
+  meta.className = "body-viewer__meta";
+  meta.textContent = bodyMetaText(body, "JSON");
+
+  const tree = document.createElement("div");
+  tree.className = "json-tree";
+  tree.append(renderJsonRoot(value));
+
+  wrapper.append(meta, tree);
+  return wrapper;
+}
+
+function renderJsonRoot(value) {
+  const root = document.createElement("div");
+  root.className = "json-root";
+
+  if (!isExpandableJsonValue(value)) {
+    root.append(renderJsonLeaf("", value));
+    return root;
+  }
+
+  root.append(jsonBracket(Array.isArray(value) ? "[" : "{"));
+  const children = document.createElement("div");
+  children.className = "json-children";
+  const entries = Array.isArray(value) ? value.entries() : Object.entries(value);
+  for (const [childKey, childValue] of entries) {
+    children.append(renderJsonNode(String(childKey), childValue, 1));
+  }
+  root.append(children, jsonBracket(Array.isArray(value) ? "]" : "}"));
+  return root;
+}
+
+function renderRawBody(text, body) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "body-viewer raw-body-viewer";
+
+  const meta = document.createElement("div");
+  meta.className = "body-viewer__meta";
+  meta.textContent = bodyMetaText(body, body.kind || "text");
+
+  const content = pre(text);
+  content.className = "raw-body";
+
+  wrapper.append(meta, content);
+  return wrapper;
+}
+
+function renderJsonNode(key, value, depth) {
+  if (!isExpandableJsonValue(value)) {
+    return renderJsonLeaf(key, value);
+  }
+
+  const details = document.createElement("details");
+  details.className = "json-node";
+  details.open = depth === 0;
+
+  const summary = document.createElement("summary");
+  summary.append(jsonKey(key), jsonSummary(value));
+
+  const children = document.createElement("div");
+  children.className = "json-children";
+
+  const entries = Array.isArray(value) ? value.entries() : Object.entries(value);
+  for (const [childKey, childValue] of entries) {
+    children.append(renderJsonNode(String(childKey), childValue, depth + 1));
+  }
+
+  details.append(summary, children);
+  return details;
+}
+
+function renderJsonLeaf(key, value) {
+  const row = document.createElement("div");
+  row.className = "json-leaf";
+
+  const renderedValue = document.createElement("span");
+  renderedValue.className = `json-value json-value--${jsonPrimitiveClass(value)}`;
+  renderedValue.textContent = summarizeJsonValue(value);
+
+  if (key) {
+    row.append(jsonKey(key), renderedValue);
+  } else {
+    row.append(renderedValue);
+  }
+  return row;
+}
+
+function jsonKey(key) {
+  const element = document.createElement("span");
+  element.className = "json-key";
+  element.textContent = key;
+  return element;
+}
+
+function jsonBracket(value) {
+  const element = document.createElement("div");
+  element.className = "json-bracket";
+  element.textContent = value;
+  return element;
+}
+
+function jsonSummary(value) {
+  const element = document.createElement("span");
+  element.className = "json-summary";
+  element.textContent = summarizeJsonValue(value);
+  return element;
+}
+
+function isExpandableJsonValue(value) {
+  return Boolean(value && typeof value === "object");
+}
+
+function jsonPrimitiveClass(value) {
+  if (value === null) {
+    return "null";
+  }
+  return typeof value;
+}
+
+function bodyMetaText(body, format) {
+  const meta = [
+    body.contentType,
+    format,
+    `${body.sizeBytes} bytes`,
+    body.truncated ? "truncated" : ""
+  ].filter(Boolean);
+  return meta.join(" | ");
 }
 
 function pre(text) {
