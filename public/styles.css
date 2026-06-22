@@ -607,11 +607,20 @@ tbody tr.selected {
 }
 
 .details-title {
+  min-width: 0;
   max-width: 100%;
+  margin: 0;
   color: #151f2e;
   font-size: 14px;
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.details-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .request-url {
@@ -748,12 +757,27 @@ tbody tr.selected {
   font-weight: 800;
 }
 
-.body-copy-button:hover {
+.curl-copy-button {
+  min-height: 23px;
+  padding: 0 7px;
+  gap: 4px;
+  border-color: #d2dce8;
+  background: #ffffff;
+  color: #4b5a70;
+  font-size: 10.5px;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.body-copy-button:hover,
+.curl-copy-button:hover {
   border-color: #9db0c8;
   background: #f5f8fc;
 }
 
-.body-copy-button.is-error {
+.body-copy-button.is-error,
+.curl-copy-button.is-error {
   border-color: #efb8b8;
   background: var(--red-soft);
   color: var(--red);

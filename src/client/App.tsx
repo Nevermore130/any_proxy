@@ -3,9 +3,11 @@ import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
+import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { bodyCopyButtonState } from "./lib/bodyActions.js";
+import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
 import type { BodyPreview, CapturedFlow, FlowFilters, StatusResponse } from "./types.js";
@@ -538,13 +540,13 @@ function RequestDetail({ flow, loadingId }: { flow: CapturedFlow | null; loading
 
   return (
     <aside className="details" aria-live="polite">
-      <h2 className="details-title">
-        {flow.method || "UNKNOWN"} {flow.host || ""}
-      </h2>
-      <p className="muted breakable request-url">
-        {flow.scheme || "http"}://{hostWithPort(flow)}
-        {flow.path || ""}
-      </p>
+      <div className="details-title-row">
+        <h2 className="details-title">
+          {flow.method || "UNKNOWN"} {flow.host || ""}
+        </h2>
+        <CurlCopyButton flow={flow} />
+      </div>
+      <p className="muted breakable request-url">{flowRequestUrl(flow)}</p>
       <DetailTabs flow={flow} />
     </aside>
   );
@@ -734,6 +736,40 @@ function BodyCopyButton({ body, label }: { body: BodyPreview | undefined; label:
       onClick={() => void copy()}
     >
       <CopySimpleIcon size={13} weight="bold" />
+      {labelText}
+    </button>
+  );
+}
+
+function CurlCopyButton({ flow }: { flow: CapturedFlow }) {
+  const [labelText, setLabelText] = useState("cURL");
+  const [failed, setFailed] = useState(false);
+
+  async function copy() {
+    try {
+      await copyText(curlCommandForFlow(flow));
+      setLabelText("Copied");
+      setFailed(false);
+    } catch {
+      setLabelText("Failed");
+      setFailed(true);
+    } finally {
+      window.setTimeout(() => {
+        setLabelText("cURL");
+        setFailed(false);
+      }, 1200);
+    }
+  }
+
+  return (
+    <button
+      aria-label="Copy request as cURL"
+      className={`curl-copy-button${failed ? " is-error" : ""}`}
+      title="Copy request as cURL"
+      type="button"
+      onClick={() => void copy()}
+    >
+      <TerminalWindowIcon size={12} weight="bold" />
       {labelText}
     </button>
   );
