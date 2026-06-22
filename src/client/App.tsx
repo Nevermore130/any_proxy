@@ -1,3 +1,9 @@
+import { ArrowRightIcon } from "@phosphor-icons/react/dist/csr/ArrowRight";
+import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
+import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
+import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
+import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
+import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { bodyCopyButtonState } from "./lib/bodyActions.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
@@ -244,6 +250,8 @@ export function App() {
 
   const relayUrl = status?.relay?.rela?.baseUrl || "/relay/rela";
   const targetOrigin = status?.relay?.rela?.targetOrigin || "unknown";
+  const errorCount = flows.filter((flow) => flow.error || (flow.statusCode ?? 0) >= 400).length;
+  const lastFlowTime = flows[0] ? formatTime(flows[0].startedAt) : "-";
   const statusLine = banner.statusError
     ? "Dashboard API unavailable"
     : paused
@@ -263,18 +271,32 @@ export function App() {
             </p>
           </div>
         </div>
+        <div className="topbar__stats" aria-label="Capture summary">
+          <SummaryStat label="Requests" value={flows.length} />
+          <SummaryStat label="Errors" value={errorCount} tone={errorCount > 0 ? "error" : "ok"} />
+          <SummaryStat label="Latest" value={lastFlowTime} />
+        </div>
         <div className="actions" aria-label="Capture controls">
-          <button type="button" disabled={actionInFlight} onClick={() => void togglePause()}>
+          <button
+            className="tool-button"
+            type="button"
+            disabled={actionInFlight}
+            onClick={() => void togglePause()}
+          >
+            {paused ? <PlayIcon size={15} weight="bold" /> : <PauseIcon size={15} weight="bold" />}
             {paused ? "Resume" : "Pause"}
           </button>
           <button
+            className="tool-button"
             type="button"
             disabled={actionInFlight || flowsLoading}
             onClick={() => void clearFlows()}
           >
+            <TrashIcon size={15} weight="bold" />
             Clear
           </button>
-          <a className="button" href={exportUrl}>
+          <a className="button tool-button button--primary" href={exportUrl}>
+            <DownloadSimpleIcon size={15} weight="bold" />
             Export
           </a>
         </div>
@@ -286,7 +308,7 @@ export function App() {
           <strong>{relayUrl}</strong>
         </div>
         <div className="route-arrow" aria-hidden="true">
-          -&gt;
+          <ArrowRightIcon size={16} weight="bold" />
         </div>
         <div className="setup__item">
           <span className="label">Upstream</span>
@@ -362,6 +384,23 @@ export function App() {
   );
 }
 
+function SummaryStat({
+  label,
+  tone,
+  value
+}: {
+  label: string;
+  tone?: "error" | "ok";
+  value: ReactNode;
+}) {
+  return (
+    <div className={`summary-stat${tone ? ` summary-stat--${tone}` : ""}`}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function RequestTable({
   error,
   filters,
@@ -385,6 +424,10 @@ function RequestTable({
         <div>
           <h2>Captured Requests</h2>
           <p>Live relay traffic from the debug API base URL.</p>
+        </div>
+        <div className="pane-header__meta" aria-label="Table state">
+          <span>{filtersAreActive(filters) ? "Filtered" : "All traffic"}</span>
+          <span>{flows.length} rows</span>
         </div>
       </div>
       <table>
@@ -690,6 +733,7 @@ function BodyCopyButton({ body, label }: { body: BodyPreview | undefined; label:
       type="button"
       onClick={() => void copy()}
     >
+      <CopySimpleIcon size={13} weight="bold" />
       {labelText}
     </button>
   );
