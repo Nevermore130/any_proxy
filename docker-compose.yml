@@ -6,32 +6,23 @@ services:
     restart: unless-stopped
     ports:
       - "${RELA_CAPTURE_DASHBOARD_PORT:-5177}:${RELA_CAPTURE_DASHBOARD_PORT:-5177}"
-      - "${RELA_CAPTURE_PROXY_PORT:-8088}:${RELA_CAPTURE_PROXY_PORT:-8088}"
     environment:
       RELA_CAPTURE_DASHBOARD_HOST: "0.0.0.0"
       RELA_CAPTURE_DASHBOARD_PORT: "${RELA_CAPTURE_DASHBOARD_PORT:-5177}"
-      RELA_CAPTURE_PROXY_HOST: "0.0.0.0"
-      RELA_CAPTURE_PROXY_PORT: "${RELA_CAPTURE_PROXY_PORT:-8088}"
       RELA_CAPTURE_ADVERTISE_HOST: "${RELA_CAPTURE_ADVERTISE_HOST:-}"
       RELA_CAPTURE_MAX_FLOWS: "${RELA_CAPTURE_MAX_FLOWS:-5000}"
       RELA_CAPTURE_BODY_PREVIEW_BYTES: "${RELA_CAPTURE_BODY_PREVIEW_BYTES:-32768}"
       RELA_CAPTURE_FLOW_TTL_SECONDS: "${RELA_CAPTURE_FLOW_TTL_SECONDS:-600}"
-      RELA_CAPTURE_MITMPROXY_BLOCK_GLOBAL: "${RELA_CAPTURE_MITMPROXY_BLOCK_GLOBAL:-false}"
       RELA_RELAY_TARGET_ORIGIN: "${RELA_RELAY_TARGET_ORIGIN:-https://api.rela.me}"
-    volumes:
-      - mitmproxy-ca:/app/.mitmproxy
     healthcheck:
       test:
         [
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:' + (process.env.RELA_CAPTURE_DASHBOARD_PORT || '5177') + '/api/status').then(async (r) => { if (!r.ok) process.exit(1); const status = await r.json(); process.exit(status.mitmproxy?.running === true ? 0 : 1); }).catch(() => process.exit(1))"
+          "fetch('http://127.0.0.1:' + (process.env.RELA_CAPTURE_DASHBOARD_PORT || '5177') + '/api/status').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
         ]
       interval: 30s
       timeout: 5s
       start_period: 20s
       retries: 3
-
-volumes:
-  mitmproxy-ca:

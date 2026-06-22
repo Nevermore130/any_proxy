@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlowStore } from "../flowStore.js";
-import type { AddonFlowEvent } from "../types.js";
+import type { CaptureFlowEvent } from "../types.js";
 
-const requestEvent: AddonFlowEvent = {
+const requestEvent: CaptureFlowEvent = {
   eventType: "request",
   flow: {
     id: "flow-1",

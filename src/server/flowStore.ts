@@ -1,9 +1,9 @@
 import { createBodyPreview } from "./bodyPreview.js";
 import { flowMatchesFilters } from "./filters.js";
 import type {
-  AddonFlowEvent,
   BodyPreview,
   CapturedFlow,
+  CaptureFlowEvent,
   FlowFilters,
   FlowStoreOptions,
   RawBodyEncoding
@@ -29,7 +29,7 @@ export class FlowStore {
     this.order.splice(0, this.order.length);
   }
 
-  ingest(event: AddonFlowEvent): CapturedFlow | undefined {
+  ingest(event: CaptureFlowEvent): CapturedFlow | undefined {
     if (this.paused) {
       return undefined;
     }

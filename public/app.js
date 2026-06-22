@@ -14,11 +14,8 @@ let latestFlowsRequestId = 0;
 
 const els = {
   statusLine: document.querySelector("#statusLine"),
-  proxyAddress: document.querySelector("#proxyAddress"),
   relayAddress: document.querySelector("#relayAddress"),
-  certificateUrl: document.querySelector("#certificateUrl"),
-  mobileSetupLink: document.querySelector("#mobileSetupLink"),
-  setupQr: document.querySelector("#setupQr"),
+  targetOrigin: document.querySelector("#targetOrigin"),
   pauseButton: document.querySelector("#pauseButton"),
   clearButton: document.querySelector("#clearButton"),
   exportButton: document.querySelector("#exportButton"),
@@ -77,22 +74,13 @@ async function loadStatus() {
     state.statusError = null;
     state.paused = Boolean(status.capture?.paused);
 
-    const proxyHost = status.proxy?.host || "unknown-host";
-    const proxyPort = status.proxy?.port || "unknown-port";
     const relayUrl = status.relay?.rela?.baseUrl || "/relay/rela";
-    const certificateUrl = status.proxy?.certificateUrl || "http://mitm.it";
-    const mobileSetupUrl = status.onboarding?.mobileSetupUrl || "/mobile-setup";
-    const qrCodeUrl = status.onboarding?.qrCodeUrl || "/api/onboarding/qr.svg";
-    const mitmRunning = Boolean(status.mitmproxy?.running);
-    const mitmMessage = status.mitmproxy?.message;
+    const targetOrigin = status.relay?.rela?.targetOrigin || "unknown";
 
-    els.proxyAddress.textContent = `${proxyHost}:${proxyPort}`;
     els.relayAddress.textContent = relayUrl;
-    els.certificateUrl.textContent = certificateUrl;
-    els.mobileSetupLink.href = mobileSetupUrl;
-    els.setupQr.src = qrCodeUrl;
-    els.statusLine.textContent = statusLineFor(mitmRunning, mitmMessage);
-    els.statusLine.dataset.state = mitmRunning ? (state.paused ? "paused" : "running") : "error";
+    els.targetOrigin.textContent = targetOrigin;
+    els.statusLine.textContent = statusLineFor();
+    els.statusLine.dataset.state = state.paused ? "paused" : "running";
   } catch (error) {
     state.statusError = `Status unavailable: ${error.message}`;
     els.statusLine.textContent = "Dashboard API unavailable";
@@ -103,14 +91,11 @@ async function loadStatus() {
   }
 }
 
-function statusLineFor(mitmRunning, mitmMessage) {
-  if (mitmRunning && state.paused) {
+function statusLineFor() {
+  if (state.paused) {
     return "Capture paused";
   }
-  if (mitmRunning) {
-    return "Capturing traffic";
-  }
-  return mitmMessage ? `Proxy not running: ${mitmMessage}` : "Proxy not running";
+  return "Capturing relay traffic";
 }
 
 async function loadFlows() {

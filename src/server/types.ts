@@ -12,7 +12,7 @@ export type BodyPreview = {
   contentType?: string;
 };
 
-export type RawAddonFlow = {
+export type RawCapturedFlow = {
   id: string;
   clientIp: string;
   startedAtEpochMs: number;
@@ -36,9 +36,9 @@ export type RawAddonFlow = {
   isTlsIntercepted: boolean;
 };
 
-export type AddonFlowEvent = {
+export type CaptureFlowEvent = {
   eventType: "request" | "response" | "error" | "websocket";
-  flow: RawAddonFlow;
+  flow: RawCapturedFlow;
 };
 
 export type CapturedFlow = {

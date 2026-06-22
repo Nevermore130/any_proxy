@@ -5,13 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { broadcastFlow, createApp, createCaptureApp, createEventHub } from "../app.js";
 import { FlowStore } from "../flowStore.js";
-import type { CapturedFlow, RawAddonFlow } from "../types.js";
+import type { CapturedFlow, RawCapturedFlow } from "../types.js";
 
 afterEach(() => {
   vi.doUnmock("node:http");
   vi.doUnmock("../config.js");
   vi.doUnmock("../lan.js");
-  vi.doUnmock("../mitm.js");
 });
 
 describe("createApp", () => {
@@ -20,16 +19,30 @@ describe("createApp", () => {
     const app = createApp({
       store,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: false, message: "not started" })
+      dashboardPort: 5177
     });
 
     const response = await request(app).get("/api/status").expect(200);
-    expect(response.body.proxy.port).toBe(8088);
+    expect(response.body).not.toHaveProperty("proxy");
+    expect(response.body).not.toHaveProperty("onboarding");
+    expect(response.body).not.toHaveProperty("mitmproxy");
     expect(response.body.relay.rela.baseUrl).toBe("http://192.168.1.10:5177/relay/rela");
     expect(response.body.relay.rela.targetOrigin).toBe("https://api.rela.me");
     expect(response.body.lanAddresses[0].address).toBe("192.168.1.10");
+  });
+
+  it("does not expose system proxy onboarding routes", async () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const app = createApp({
+      store,
+      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+      dashboardPort: 5177
+    });
+
+    await request(app).get("/api/onboarding").expect(404);
+    await request(app).get("/api/onboarding/qr.svg").expect(404);
+    await request(app).get("/mobile-setup").expect(404);
+    await request(app).get("/profiles/ios-proxy.mobileconfig").expect(404);
   });
 
   it("relays Rela app API requests and records the exchange", async () => {
@@ -60,9 +73,7 @@ describe("createApp", () => {
         store,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
-        proxyPort: 8088,
-        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`,
-        mitmState: () => ({ running: true })
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
       });
 
       const response = await request(app)
@@ -103,9 +114,7 @@ describe("createApp", () => {
       store,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardPort: 5177,
-      proxyPort: 8088,
-      relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`,
-      mitmState: () => ({ running: true })
+      relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
     });
 
     await request(app).get("/relay/rela/v1/down").expect(502);
@@ -121,97 +130,21 @@ describe("createApp", () => {
     expect(flow.error).toContain("Relay request failed");
   });
 
-  it("returns mobile onboarding metadata and QR code", async () => {
-    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
-    const app = createApp({
-      store,
-      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
-    });
-
-    const onboarding = await request(app).get("/api/onboarding").expect(200);
-    expect(onboarding.body).toMatchObject({
-      dashboardUrl: "http://192.168.1.10:5177",
-      mobileSetupUrl: "http://192.168.1.10:5177/mobile-setup",
-      certificateUrl: "http://mitm.it",
-      proxy: {
-        host: "192.168.1.10",
-        port: 8088,
-        url: "http://192.168.1.10:8088"
-      },
-      iosProfileUrl: "http://192.168.1.10:5177/profiles/ios-proxy.mobileconfig"
-    });
-
-    const qr = await request(app).get("/api/onboarding/qr.svg").expect(200);
-    const qrBody = qr.text ?? qr.body.toString("utf8");
-    expect(qr.headers["content-type"]).toContain("image/svg+xml");
-    expect(qrBody).toContain("<svg");
-    expect(qrBody).toContain("path");
-  });
-
-  it("uses advertised host for cloud-facing onboarding and relay URLs", async () => {
+  it("uses advertised host for cloud-facing dashboard and relay URLs", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const app = createApp({
       store,
       lanAddresses: [{ interfaceName: "eth0", address: "172.18.0.2" }],
       advertiseHost: "capture.example.com",
       dashboardHost: "0.0.0.0",
-      dashboardPort: 5177,
-      proxyHost: "0.0.0.0",
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
 
     const status = await request(app).get("/api/status").expect(200);
     expect(status.body.dashboard.host).toBe("capture.example.com");
-    expect(status.body.proxy.host).toBe("capture.example.com");
-    expect(status.body.onboarding.mobileSetupUrl).toBe(
-      "http://capture.example.com:5177/mobile-setup"
-    );
-    expect(status.body.onboarding.qrCodeUrl).toBe(
-      "http://capture.example.com:5177/api/onboarding/qr.svg"
-    );
-    expect(status.body.onboarding.iosProfileUrl).toBe(
-      "http://capture.example.com:5177/profiles/ios-proxy.mobileconfig"
-    );
     expect(status.body.relay.rela.baseUrl).toBe(
       "http://capture.example.com:5177/relay/rela"
     );
-
-    const onboarding = await request(app).get("/api/onboarding").expect(200);
-    expect(onboarding.body.proxy).toMatchObject({
-      host: "capture.example.com",
-      port: 8088,
-      url: "http://capture.example.com:8088"
-    });
-  });
-
-  it("serves mobile setup and iOS proxy profile pages", async () => {
-    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
-    const app = createApp({
-      store,
-      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
-    });
-
-    const setup = await request(app).get("/mobile-setup").expect(200);
-    expect(setup.headers["content-type"]).toContain("text/html");
-    expect(setup.text).toContain("192.168.1.10:8088");
-    expect(setup.text).toContain("http://mitm.it");
-    expect(setup.text).toContain("/profiles/ios-proxy.mobileconfig");
-
-    const profile = await request(app).get("/profiles/ios-proxy.mobileconfig").expect(200);
-    expect(profile.headers["content-type"]).toContain("application/x-apple-aspen-config");
-    expect(profile.text).toContain("<key>PayloadType</key>");
-    expect(profile.text).toContain("<string>com.apple.proxy.http.global</string>");
-    expect(profile.text).toContain("<key>ProxyServer</key>");
-    expect(profile.text).toContain("<string>192.168.1.10</string>");
-    expect(profile.text).toContain("<key>ProxyServerPort</key>");
-    expect(profile.text).toContain("<integer>8088</integer>");
   });
 
   it("prefers concrete configured hosts in status", async () => {
@@ -220,15 +153,12 @@ describe("createApp", () => {
       store,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardHost: "127.0.0.1",
-      dashboardPort: 5177,
-      proxyHost: "127.0.0.2",
-      proxyPort: 8088,
-      mitmState: () => ({ running: false, message: "not started" })
+      dashboardPort: 5177
     });
 
     const response = await request(app).get("/api/status").expect(200);
     expect(response.body.dashboard.host).toBe("127.0.0.1");
-    expect(response.body.proxy.host).toBe("127.0.0.2");
+    expect(response.body.relay.rela.baseUrl).toBe("http://127.0.0.1:5177/relay/rela");
   });
 
   it("lists, filters, clears, pauses, resumes, and exports flows", async () => {
@@ -246,9 +176,7 @@ describe("createApp", () => {
     const app = createApp({
       store,
       lanAddresses: [],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
 
     expect((await request(app).get("/api/flows?host=example").expect(200)).body.flows).toHaveLength(
@@ -295,9 +223,7 @@ describe("createApp", () => {
     const app = createApp({
       store,
       lanAddresses: [],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
 
     const invalidOnly = await request(app)
@@ -316,9 +242,7 @@ describe("createApp", () => {
     const app = createApp({
       store,
       lanAddresses: [],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
 
     await request(app).get("/api/flows/missing-flow").expect(404);
@@ -329,9 +253,7 @@ describe("createApp", () => {
     const app = createApp({
       store,
       lanAddresses: [],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
 
     const server = app.listen(0);
@@ -370,9 +292,7 @@ describe("createApp", () => {
     const app = createApp({
       store,
       lanAddresses: [],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
     const server = app.listen(0);
     await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -402,16 +322,12 @@ describe("createApp", () => {
     const first = createCaptureApp({
       store: new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 }),
       lanAddresses: [],
-      dashboardPort: 5177,
-      proxyPort: 8088,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5177
     });
     const second = createCaptureApp({
       store: new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 }),
       lanAddresses: [],
-      dashboardPort: 5178,
-      proxyPort: 8089,
-      mitmState: () => ({ running: true })
+      dashboardPort: 5178
     });
     const firstServer = first.app.listen(0);
     const secondServer = second.app.listen(0);
@@ -466,106 +382,56 @@ describe("createApp", () => {
 });
 
 describe("startRelaCapture", () => {
-  it("starts mitmproxy only after the dashboard server listens", async () => {
+  it("starts the dashboard relay service without a capture proxy", async () => {
     const { startRelaCapture } = await importIndexForTest();
     const server = createFakeServer();
-    const startMitmproxy = vi.fn(() => ({ stop: vi.fn(), child: {} }));
-    const runtime = startRelaCapture({
-      config: createRuntimeConfig(),
-      createServer: () => server as unknown as http.Server,
-      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
-      logger: createLogger(),
-      registerSignals: false,
-      startMitmproxy
-    });
-
-    expect(startMitmproxy).not.toHaveBeenCalled();
-    emitListenCallback(server);
-    expect(startMitmproxy).toHaveBeenCalledTimes(1);
-    expect(startMitmproxy).toHaveBeenCalledWith(expect.objectContaining({ blockGlobal: true }));
-
-    runtime.close();
-  });
-
-  it("passes the global-client block setting to mitmproxy", async () => {
-    const { startRelaCapture } = await importIndexForTest();
-    const server = createFakeServer();
-    const startMitmproxy = vi.fn(() => ({ stop: vi.fn(), child: {} }));
-    const runtime = startRelaCapture({
-      config: { ...createRuntimeConfig(), mitmproxyBlockGlobal: false },
-      createServer: () => server as unknown as http.Server,
-      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
-      logger: createLogger(),
-      registerSignals: false,
-      startMitmproxy
-    });
-
-    emitListenCallback(server);
-
-    expect(startMitmproxy).toHaveBeenCalledWith(expect.objectContaining({ blockGlobal: false }));
-
-    runtime.close();
-  });
-
-  it("does not start mitmproxy when the dashboard server fails to listen", async () => {
-    const { startRelaCapture } = await importIndexForTest();
-    const server = createFakeServer();
-    const startMitmproxy = vi.fn(() => ({ stop: vi.fn(), child: {} }));
-    const setExitCode = vi.fn();
-    const runtime = startRelaCapture({
-      config: createRuntimeConfig(),
-      createServer: () => server as unknown as http.Server,
-      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
-      logger: createLogger(),
-      registerSignals: false,
-      setExitCode,
-      startMitmproxy
-    });
-
-    server.emit("error", Object.assign(new Error("busy"), { code: "EADDRINUSE" }));
-
-    expect(startMitmproxy).not.toHaveBeenCalled();
-    expect(setExitCode).toHaveBeenCalledWith(1);
-
-    runtime.close();
-  });
-
-  it("logs mitm event processing errors and keeps the runtime alive", async () => {
-    const { startRelaCapture } = await importIndexForTest();
-    const server = createFakeServer();
-    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const logger = createLogger();
-    let onEvent: ((event: { eventType: "response"; flow: RawAddonFlow }) => void) | undefined;
-    const startMitmproxy = vi.fn((options) => {
-      onEvent = options.onEvent;
-      return { stop: vi.fn(), child: {} };
-    });
-    vi.spyOn(store, "ingest").mockImplementation(() => {
-      throw new Error("ingest failed");
+    const runtime = startRelaCapture({
+      config: createRuntimeConfig(),
+      createServer: () => server as unknown as http.Server,
+      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+      logger,
+      registerSignals: false
     });
 
+    expect(server.listen).toHaveBeenCalledWith(5177, "127.0.0.1", expect.any(Function));
+    emitListenCallback(server);
+    expect(logger.log).toHaveBeenCalledWith("Rela Capture dashboard: http://127.0.0.1:5177");
+    expect(logger.log).toHaveBeenCalledWith(
+      "Rela App relay: http://127.0.0.1:5177/relay/rela -> https://api.rela.me"
+    );
+    expect(logger.log).not.toHaveBeenCalledWith(expect.stringContaining("Phone proxy"));
+    expect(logger.log).not.toHaveBeenCalledWith(expect.stringContaining("mitmproxy"));
+
+    runtime.close();
+  });
+
+  it("sets the exit code when the dashboard server fails to listen", async () => {
+    const { startRelaCapture } = await importIndexForTest();
+    const server = createFakeServer();
+    const setExitCode = vi.fn();
+    const logger = createLogger();
     const runtime = startRelaCapture({
       config: createRuntimeConfig(),
       createServer: () => server as unknown as http.Server,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       logger,
       registerSignals: false,
-      startMitmproxy,
-      store
+      setExitCode
     });
-    emitListenCallback(server);
 
-    expect(() => onEvent?.({ eventType: "response", flow: createRawFlow() })).not.toThrow();
+    server.emit("error", Object.assign(new Error("busy"), { code: "EADDRINUSE" }));
+
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to process mitmproxy event"),
-      expect.any(Error)
+      "Dashboard port 5177 is already in use. Set RELA_CAPTURE_DASHBOARD_PORT to use another port."
     );
+    expect(setExitCode).toHaveBeenCalledWith(1);
 
     runtime.close();
   });
 });
 
-function createRawFlow(overrides: Partial<RawAddonFlow> = {}): RawAddonFlow {
+function createRawFlow(overrides: Partial<RawCapturedFlow> = {}): RawCapturedFlow {
   return {
     id: "flow-1",
     clientIp: "192.168.1.20",
@@ -585,7 +451,7 @@ function createRawFlow(overrides: Partial<RawAddonFlow> = {}): RawAddonFlow {
   };
 }
 
-function createCapturedFlow(overrides: Partial<RawAddonFlow> = {}): CapturedFlow {
+function createCapturedFlow(overrides: Partial<RawCapturedFlow> = {}): CapturedFlow {
   const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
   const flow = store.ingest({ eventType: "response", flow: createRawFlow(overrides) });
   if (!flow) {
@@ -681,9 +547,6 @@ async function importIndexForTest(): Promise<{
   vi.doMock("../lan.js", () => ({
     getLanAddresses: () => [{ interfaceName: "en0", address: "192.168.1.10" }]
   }));
-  vi.doMock("../mitm.js", () => ({
-    startMitmproxy: vi.fn(() => ({ stop: vi.fn(), child: {} }))
-  }));
 
   return (await import("../index.js")) as {
     startRelaCapture: (options: Record<string, unknown>) => { close: () => void };
@@ -694,14 +557,10 @@ function createRuntimeConfig() {
   return {
     dashboardHost: "127.0.0.1",
     dashboardPort: 5177,
-    proxyHost: "127.0.0.1",
-    proxyPort: 8088,
     maxFlows: 10,
     bodyPreviewBytes: 1024,
-    includeHosts: [],
-    excludeHosts: [],
-    relayTargetOrigin: "https://api.rela.me",
-    mitmproxyBlockGlobal: true
+    flowTtlMs: 600_000,
+    relayTargetOrigin: "https://api.rela.me"
   };
 }
 

@@ -1,7 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
 import { FlowStore } from "./flowStore.js";
-import type { CapturedFlow, HeaderPair, RawAddonFlow, RawBodyEncoding } from "./types.js";
+import type { CapturedFlow, HeaderPair, RawBodyEncoding, RawCapturedFlow } from "./types.js";
 
 export type RelayOptions = {
   broadcastFlow: (flow: CapturedFlow) => void;
@@ -172,7 +172,7 @@ function recordRelayFlow(
 ): void {
   const requestPayload = bodyPayload(details.requestBody, contentType(details.requestHeaders));
   const responsePayload = bodyPayload(details.responseBody, contentType(details.responseHeaders));
-  const flow: RawAddonFlow = {
+  const flow: RawCapturedFlow = {
     id: `relay-${randomUUID()}`,
     clientIp: details.clientIp,
     startedAtEpochMs: details.startedAtEpochMs,

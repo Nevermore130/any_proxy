@@ -20,31 +20,14 @@
         </div>
       </header>
 
-      <section class="setup" aria-label="Proxy setup">
-        <div class="setup__item">
-          <span class="label">Phone proxy</span>
-          <strong id="proxyAddress">Loading</strong>
-        </div>
+      <section class="setup" aria-label="Relay setup">
         <div class="setup__item">
           <span class="label">App relay</span>
           <strong id="relayAddress">Loading</strong>
         </div>
         <div class="setup__item">
-          <span class="label">Certificate</span>
-          <strong id="certificateUrl">http://mitm.it</strong>
-        </div>
-        <div class="setup__item setup__qr">
-          <span class="label">QR setup</span>
-          <a id="mobileSetupLink" href="/mobile-setup">
-            <img id="setupQr" src="/api/onboarding/qr.svg" alt="Scan to open phone setup" />
-          </a>
-        </div>
-        <div class="setup__item setup__guide">
-          <span class="label">Setup</span>
-          <p>
-            Scan the QR code on the phone, or set Wi-Fi HTTP proxy to the address
-            above, then open the certificate URL and trust the CA.
-          </p>
+          <span class="label">Upstream</span>
+          <strong id="targetOrigin">Loading</strong>
         </div>
       </section>
 
