@@ -3,11 +3,12 @@ import { detailTabButtonState, normalizeDetailTab } from "./detailTabs.js";
 
 describe("detail tab helpers", () => {
   it("defaults unknown tabs to request", () => {
-    expect(normalizeDetailTab()).toBe("request");
-    expect(normalizeDetailTab("headers")).toBe("request");
+    expect(normalizeDetailTab("response")).toBe("response");
+    expect(normalizeDetailTab("unknown")).toBe("request");
+    expect(normalizeDetailTab(undefined)).toBe("request");
   });
 
-  it("marks the selected tab and links each tab to its panel", () => {
+  it("marks exactly one tab as selected", () => {
     expect(detailTabButtonState("response")).toEqual([
       {
         id: "request",

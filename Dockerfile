@@ -4,8 +4,9 @@ COPY package*.json ./
 RUN npm ci
 
 FROM deps AS build
-COPY tsconfig.json tsconfig.build.json ./
+COPY tsconfig.json tsconfig.build.json vite.config.ts ./
 COPY src ./src
+COPY public ./public
 RUN npm run build
 
 FROM node:22-trixie-slim AS runtime
@@ -22,7 +23,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
-COPY public ./public
 
 EXPOSE 5177
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

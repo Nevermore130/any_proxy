@@ -3,7 +3,13 @@ import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { broadcastFlow, createApp, createCaptureApp, createEventHub } from "../app.js";
+import {
+  broadcastFlow,
+  createApp,
+  createCaptureApp,
+  createEventHub,
+  dashboardStaticDirs
+} from "../app.js";
 import { FlowStore } from "../flowStore.js";
 import type { CapturedFlow, RawCapturedFlow } from "../types.js";
 
@@ -14,6 +20,10 @@ afterEach(() => {
 });
 
 describe("createApp", () => {
+  it("serves built dashboard assets before source public assets", () => {
+    expect(dashboardStaticDirs("/repo")).toEqual(["/repo/dist/public", "/repo/public"]);
+  });
+
   it("returns status", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const app = createApp({

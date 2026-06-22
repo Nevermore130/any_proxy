@@ -13,6 +13,7 @@ This project no longer runs a phone system proxy, mitmproxy, CA certificate inst
 
 ```bash
 npm install
+npm run build:client
 npm run dev
 ```
 
@@ -20,6 +21,14 @@ For a non-watch run, use:
 
 ```bash
 npm run start
+```
+
+The dashboard is a React/Vite app. `npm run build:client` writes the dashboard bundle to
+`dist/public`, and the Express service serves that directory before the legacy `public`
+fallback. For a full production build, use:
+
+```bash
+npm run build
 ```
 
 The terminal prints:

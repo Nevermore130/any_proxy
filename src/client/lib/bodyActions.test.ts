@@ -3,26 +3,29 @@ import { bodyCopyButtonState, bodyCopyText } from "./bodyActions.js";
 
 describe("body action helpers", () => {
   it("uses the original body preview as copy text", () => {
-    const body = {
-      kind: "text",
-      contentType: "application/json",
-      preview: "{\"ok\":true,\"items\":[1,2]}",
-      sizeBytes: 27,
-      truncated: false
-    };
-
-    expect(bodyCopyText(body)).toBe("{\"ok\":true,\"items\":[1,2]}");
+    expect(
+      bodyCopyText({
+        kind: "text",
+        contentType: "application/json",
+        preview: "{\"ok\":true,\"items\":[1,2]}",
+        sizeBytes: 27,
+        truncated: false
+      })
+    ).toBe("{\"ok\":true,\"items\":[1,2]}");
   });
 
   it("builds copy button labels for a response body", () => {
     expect(
-      bodyCopyButtonState({
-        kind: "text",
-        contentType: "application/json",
-        preview: "{\"ok\":true}",
-        sizeBytes: 11,
-        truncated: false
-      }, "Response Body")
+      bodyCopyButtonState(
+        {
+          kind: "text",
+          contentType: "application/json",
+          preview: "{\"ok\":true}",
+          sizeBytes: 11,
+          truncated: false
+        },
+        "Response Body"
+      )
     ).toEqual({
       ariaLabel: "Copy Response Body raw body",
       enabled: true,

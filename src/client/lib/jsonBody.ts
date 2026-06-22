@@ -1,4 +1,8 @@
-export function parseJsonBodyPreview(body) {
+import type { BodyPreview } from "../types.js";
+
+type JsonParseResult = { ok: true; value: unknown } | { ok: false };
+
+export function parseJsonBodyPreview(body: BodyPreview | undefined): JsonParseResult {
   if (!body || body.kind !== "text" || body.truncated) {
     return { ok: false };
   }
@@ -9,13 +13,13 @@ export function parseJsonBodyPreview(body) {
   }
 
   try {
-    return { ok: true, value: JSON.parse(preview) };
+    return { ok: true, value: JSON.parse(preview) as unknown };
   } catch {
     return { ok: false };
   }
 }
 
-export function summarizeJsonValue(value) {
+export function summarizeJsonValue(value: unknown): string {
   if (Array.isArray(value)) {
     return "[]";
   }
@@ -31,7 +35,7 @@ export function summarizeJsonValue(value) {
   return String(value);
 }
 
-function looksLikeJson(contentType, preview) {
+function looksLikeJson(contentType: string | undefined, preview: string): boolean {
   const normalizedType = String(contentType || "").toLowerCase();
   if (normalizedType.includes("json")) {
     return true;

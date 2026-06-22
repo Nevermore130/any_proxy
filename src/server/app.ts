@@ -154,7 +154,9 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   );
 
   app.use(express.json());
-  app.use(express.static(path.join(rootDir, "public")));
+  for (const staticDir of dashboardStaticDirs(rootDir)) {
+    app.use(express.static(staticDir));
+  }
 
   app.get("/api/status", (_request, response) => {
     response.json({
@@ -226,6 +228,10 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   });
 
   return app;
+}
+
+export function dashboardStaticDirs(rootDir: string): string[] {
+  return [path.join(rootDir, "dist", "public"), path.join(rootDir, "public")];
 }
 
 function absoluteHttpUrl(host: string, port: number): string {
