@@ -24,7 +24,18 @@ export class FlowStore {
     return this.paused;
   }
 
-  clear(): void {
+  clear(captureSessionId?: string): void {
+    if (captureSessionId) {
+      for (const id of Array.from(this.order)) {
+        const flow = this.flows.get(id);
+        if (flow && this.matchesCaptureSession(flow, captureSessionId)) {
+          this.flows.delete(id);
+          this.order.splice(this.order.indexOf(id), 1);
+        }
+      }
+      return;
+    }
+
     this.flows.clear();
     this.order.splice(0, this.order.length);
   }
@@ -37,6 +48,7 @@ export class FlowStore {
     const existing = this.flows.get(event.flow.id);
     const next: CapturedFlow = {
       id: event.flow.id,
+      captureSessionId: event.flow.captureSessionId,
       clientIp: event.flow.clientIp,
       startedAt: new Date(event.flow.startedAtEpochMs).toISOString(),
       durationMs: event.flow.durationMs ?? existing?.durationMs,
@@ -74,22 +86,42 @@ export class FlowStore {
     return next;
   }
 
-  getFlow(id: string): CapturedFlow | undefined {
+  getFlow(id: string, captureSessionId?: string): CapturedFlow | undefined {
     this.trim();
-    return this.flows.get(id);
+    const flow = this.flows.get(id);
+    if (!flow || !this.matchesCaptureSession(flow, captureSessionId)) {
+      return undefined;
+    }
+
+    return flow;
   }
 
-  listFlows(filters: FlowFilters): CapturedFlow[] {
+  listFlows(filters: FlowFilters, captureSessionId?: string): CapturedFlow[] {
     this.trim();
     return this.order
       .map((id) => this.flows.get(id))
       .filter((flow): flow is CapturedFlow => Boolean(flow))
+      .filter((flow) => this.matchesCaptureSession(flow, captureSessionId))
       .filter((flow) => flowMatchesFilters(flow, filters));
   }
 
-  size(): number {
+  size(captureSessionId?: string): number {
     this.trim();
+    if (captureSessionId) {
+      return Array.from(this.flows.values()).filter((flow) =>
+        this.matchesCaptureSession(flow, captureSessionId)
+      ).length;
+    }
+
     return this.flows.size;
+  }
+
+  private matchesCaptureSession(flow: CapturedFlow, captureSessionId: string | undefined): boolean {
+    if (!captureSessionId) {
+      return true;
+    }
+
+    return !flow.captureSessionId || flow.captureSessionId === captureSessionId;
   }
 
   private trim(nowEpochMs = Date.now()): void {

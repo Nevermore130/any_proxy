@@ -14,6 +14,7 @@ export type BodyPreview = {
 
 export type RawCapturedFlow = {
   id: string;
+  captureSessionId?: string;
   clientIp: string;
   startedAtEpochMs: number;
   durationMs?: number;
@@ -43,6 +44,7 @@ export type CaptureFlowEvent = {
 
 export type CapturedFlow = {
   id: string;
+  captureSessionId?: string;
   clientIp: string;
   startedAt: string;
   durationMs?: number;

@@ -1,6 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
 import { FlowStore } from "./flowStore.js";
+import { captureSessionHeaderName, captureSessionIdFromHeader } from "./session.js";
 import type { CapturedFlow, HeaderPair, RawBodyEncoding, RawCapturedFlow } from "./types.js";
 
 export type RelayOptions = {
@@ -21,7 +22,12 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade"
 ]);
 
-const REQUEST_HEADERS_TO_DROP = new Set([...HOP_BY_HOP_HEADERS, "content-length", "host"]);
+const REQUEST_HEADERS_TO_DROP = new Set([
+  ...HOP_BY_HOP_HEADERS,
+  "content-length",
+  "host",
+  captureSessionHeaderName.toLowerCase()
+]);
 const RESPONSE_HEADERS_TO_DROP = new Set([
   ...HOP_BY_HOP_HEADERS,
   "content-encoding",
@@ -37,6 +43,7 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
     const requestBody = requestBodyBuffer(request);
     const requestHeaders = headerPairs(request.headers);
     const target = new URL(targetUrl);
+    const captureSessionId = captureSessionIdFromHeader(request);
 
     try {
       const upstreamResponse = await fetch(targetUrl, {
@@ -56,6 +63,7 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
 
       response.status(upstreamResponse.status).send(responseBody);
       recordRelayFlow(options, {
+        captureSessionId,
         clientIp: clientIp(request),
         durationMs: Date.now() - startedAt,
         method: request.method,
@@ -73,6 +81,7 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.status(502).send(responseBody);
       recordRelayFlow(options, {
+        captureSessionId,
         clientIp: clientIp(request),
         durationMs: Date.now() - startedAt,
         error: `Relay request failed: ${message}`,
@@ -157,6 +166,7 @@ function headerPairs(headers: Request["headers"]): HeaderPair[] {
 function recordRelayFlow(
   options: RelayOptions,
   details: {
+    captureSessionId: string;
     clientIp: string;
     durationMs: number;
     error?: string;
@@ -174,6 +184,7 @@ function recordRelayFlow(
   const responsePayload = bodyPayload(details.responseBody, contentType(details.responseHeaders));
   const flow: RawCapturedFlow = {
     id: `relay-${randomUUID()}`,
+    captureSessionId: details.captureSessionId,
     clientIp: details.clientIp,
     startedAtEpochMs: details.startedAtEpochMs,
     durationMs: details.durationMs,

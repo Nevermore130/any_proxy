@@ -8,6 +8,7 @@ export type BodyPreview = {
 
 export type CapturedFlow = {
   id: string;
+  captureSessionId?: string;
   clientIp?: string;
   startedAt?: string;
   method?: string;
@@ -36,6 +37,16 @@ export type FlowFilters = {
 export type StatusResponse = {
   capture?: {
     paused?: boolean;
+  };
+  session?: {
+    id?: string;
+    qrPayload?: {
+      type?: string;
+      version?: number;
+      relayBaseUrl?: string;
+      sessionId?: string;
+      headerName?: string;
+    };
   };
   relay?: {
     rela?: {

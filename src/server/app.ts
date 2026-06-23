@@ -1,9 +1,11 @@
 import express, { type Express, type Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import QRCode from "qrcode";
 import { FlowStore } from "./flowStore.js";
 import type { LanAddress } from "./lan.js";
 import { createRelayHandler } from "./relay.js";
+import { captureSessionQrPayload, ensureCaptureSession } from "./session.js";
 import type { CapturedFlow, FlowFilters } from "./types.js";
 
 export type CreateAppOptions = {
@@ -26,10 +28,10 @@ export type SseClient = {
 };
 
 export type EventHub = {
-  add: (client: SseClient) => void;
+  add: (captureSessionId: string | SseClient, client?: SseClient) => void;
   remove: (client: SseClient) => void;
   broadcastFlow: (flow: CapturedFlow) => void;
-  broadcastClear: () => void;
+  broadcastClear: (captureSessionId?: string) => void;
   closeEvents: () => void;
 };
 
@@ -79,14 +81,16 @@ export function createCaptureApp(options: CreateAppOptions): CaptureApp {
 }
 
 export function createEventHub(): EventHub {
-  const clients = new Set<SseClient>();
+  const clientsBySession = new Map<string, Set<SseClient>>();
 
   const remove = (client: SseClient): void => {
-    clients.delete(client);
+    for (const clients of clientsBySession.values()) {
+      clients.delete(client);
+    }
   };
 
   const closeClient = (client: SseClient): void => {
-    clients.delete(client);
+    remove(client);
     if (client.destroyed || client.writableEnded) {
       return;
     }
@@ -98,12 +102,15 @@ export function createEventHub(): EventHub {
     }
   };
 
-  const broadcast = (payload: BroadcastPayload): void => {
+  const broadcast = (payload: BroadcastPayload, captureSessionId?: string): void => {
     const data = `data: ${JSON.stringify(payload)}\n\n`;
+    const clients = captureSessionId
+      ? (clientsBySession.get(captureSessionId) ?? new Set<SseClient>())
+      : new Set(Array.from(clientsBySession.values()).flatMap((sessionClients) => Array.from(sessionClients)));
 
     for (const client of Array.from(clients)) {
       if (client.destroyed || client.writableEnded) {
-        clients.delete(client);
+        remove(client);
         continue;
       }
 
@@ -116,16 +123,27 @@ export function createEventHub(): EventHub {
   };
 
   return {
-    add: (client) => {
+    add: (captureSessionIdOrClient, maybeClient) => {
+      const captureSessionId =
+        typeof captureSessionIdOrClient === "string" ? captureSessionIdOrClient : "__compat__";
+      const client =
+        typeof captureSessionIdOrClient === "string" ? maybeClient : captureSessionIdOrClient;
+      if (!client) {
+        return;
+      }
+      const clients = clientsBySession.get(captureSessionId) ?? new Set<SseClient>();
       clients.add(client);
+      clientsBySession.set(captureSessionId, clients);
       client.once("close", () => remove(client));
       client.once("error", () => remove(client));
     },
     remove,
-    broadcastFlow: (flow) => broadcast({ type: "flow", flow }),
-    broadcastClear: () => broadcast({ type: "clear" }),
+    broadcastFlow: (flow) => broadcast({ type: "flow", flow }, flow.captureSessionId),
+    broadcastClear: (captureSessionId) => broadcast({ type: "clear" }, captureSessionId),
     closeEvents: () => {
-      for (const client of Array.from(clients)) {
+      for (const client of Array.from(clientsBySession.values()).flatMap((sessionClients) =>
+        Array.from(sessionClients)
+      )) {
         closeClient(client);
       }
     }
@@ -158,7 +176,8 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     app.use(express.static(staticDir));
   }
 
-  app.get("/api/status", (_request, response) => {
+  app.get("/api/status", (request, response) => {
+    const captureSessionId = ensureCaptureSession(request, response);
     response.json({
       capture: { paused: options.store.isPaused() },
       dashboard: { host: dashboardHost, port: options.dashboardPort },
@@ -168,16 +187,36 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
           targetOrigin: relayTargetOrigin
         }
       },
+      session: {
+        id: captureSessionId,
+        qrPayload: captureSessionQrPayload(relayBaseUrl, captureSessionId)
+      },
       lanAddresses: options.lanAddresses
     });
   });
 
+  app.get("/api/session/qr.svg", async (request, response) => {
+    const captureSessionId = ensureCaptureSession(request, response);
+    const payload = captureSessionQrPayload(relayBaseUrl, captureSessionId);
+    const svg = await QRCode.toString(JSON.stringify(payload), {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      type: "svg",
+      width: 220
+    });
+    response.type("image/svg+xml").send(svg);
+  });
+
   app.get("/api/flows", (request, response) => {
-    response.json({ flows: options.store.listFlows(filtersFromQuery(request.query)) });
+    const captureSessionId = ensureCaptureSession(request, response);
+    response.json({
+      flows: options.store.listFlows(filtersFromQuery(request.query), captureSessionId)
+    });
   });
 
   app.get("/api/flows/:id", (request, response) => {
-    const flow = options.store.getFlow(request.params.id);
+    const captureSessionId = ensureCaptureSession(request, response);
+    const flow = options.store.getFlow(request.params.id, captureSessionId);
     if (!flow) {
       response.status(404).json({ error: "flow not found" });
       return;
@@ -197,13 +236,15 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   });
 
   app.post("/api/flows/clear", (_request, response) => {
-    options.store.clear();
-    eventHub.broadcastClear();
+    const captureSessionId = ensureCaptureSession(_request, response);
+    options.store.clear(captureSessionId);
+    eventHub.broadcastClear(captureSessionId);
     response.json({ cleared: true });
   });
 
   app.get("/api/export", (request, response) => {
-    const flows = options.store.listFlows(filtersFromQuery(request.query));
+    const captureSessionId = ensureCaptureSession(request, response);
+    const flows = options.store.listFlows(filtersFromQuery(request.query), captureSessionId);
     response.setHeader("content-type", "application/json; charset=utf-8");
     response.setHeader(
       "content-disposition",
@@ -213,6 +254,7 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   });
 
   app.get("/api/events", (request, response) => {
+    const captureSessionId = ensureCaptureSession(request, response);
     response.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
@@ -221,7 +263,7 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     });
     response.write(": connected\n\n");
 
-    eventHub.add(response);
+    eventHub.add(captureSessionId, response);
     request.on("close", () => {
       eventHub.remove(response);
     });

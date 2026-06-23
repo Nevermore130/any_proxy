@@ -277,7 +277,7 @@ h3 {
 
 .setup {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 34px minmax(220px, 360px);
+  grid-template-columns: minmax(260px, 1fr) 34px minmax(220px, 360px) minmax(132px, max-content);
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
@@ -308,6 +308,38 @@ h3 {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.setup__qr {
+  display: grid;
+  grid-template-columns: 54px max-content;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: var(--shadow-inset);
+}
+
+.setup__qr img,
+.setup__qr-placeholder {
+  display: block;
+  width: 54px;
+  height: 54px;
+  border: 1px solid #d4dde9;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.setup__qr strong {
+  display: block;
+  margin-top: 3px;
+  color: #172033;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .route-arrow {

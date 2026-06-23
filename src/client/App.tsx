@@ -252,6 +252,10 @@ export function App() {
 
   const relayUrl = status?.relay?.rela?.baseUrl || "/relay/rela";
   const targetOrigin = status?.relay?.rela?.targetOrigin || "unknown";
+  const captureSessionId = status?.session?.id || "";
+  const sessionQrUrl = captureSessionId
+    ? `/api/session/qr.svg?sid=${encodeURIComponent(captureSessionId)}`
+    : "";
   const errorCount = flows.filter((flow) => flow.error || (flow.statusCode ?? 0) >= 400).length;
   const lastFlowTime = flows[0] ? formatTime(flows[0].startedAt) : "-";
   const statusLine = banner.statusError
@@ -315,6 +319,17 @@ export function App() {
         <div className="setup__item">
           <span className="label">Upstream</span>
           <strong>{targetOrigin}</strong>
+        </div>
+        <div className="setup__qr">
+          {sessionQrUrl ? (
+            <img alt="App capture binding QR code" src={sessionQrUrl} />
+          ) : (
+            <div className="setup__qr-placeholder" aria-hidden="true" />
+          )}
+          <div>
+            <span className="label">Bind App</span>
+            <strong>{captureSessionId ? "Scan QR" : "Loading..."}</strong>
+          </div>
         </div>
       </section>
 

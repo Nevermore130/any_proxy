@@ -41,6 +41,37 @@ describe("createApp", () => {
     expect(response.body.lanAddresses[0].address).toBe("192.168.1.10");
   });
 
+  it("assigns each dashboard browser a stable capture session and QR payload", async () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const app = createApp({
+      store,
+      lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+      dashboardPort: 5177
+    });
+    const firstBrowser = request.agent(app);
+    const secondBrowser = request.agent(app);
+
+    const firstStatus = await firstBrowser.get("/api/status").expect(200);
+    const firstStatusAgain = await firstBrowser.get("/api/status").expect(200);
+    const secondStatus = await secondBrowser.get("/api/status").expect(200);
+
+    expect(setCookieHeaders(firstStatus).join(";")).toContain("rela_capture_sid=");
+    expect(firstStatus.body.session.id).toMatch(/^cap_[A-Za-z0-9_-]{24,}$/);
+    expect(firstStatusAgain.body.session.id).toBe(firstStatus.body.session.id);
+    expect(secondStatus.body.session.id).not.toBe(firstStatus.body.session.id);
+    expect(firstStatus.body.session.qrPayload).toEqual({
+      type: "rela_capture_session",
+      version: 1,
+      relayBaseUrl: "http://192.168.1.10:5177/relay/rela",
+      sessionId: firstStatus.body.session.id,
+      headerName: "X-Rela-Capture-Session"
+    });
+
+    const qr = await firstBrowser.get("/api/session/qr.svg").expect(200);
+    expect(qr.headers["content-type"]).toContain("image/svg+xml");
+    expect(qr.text ?? qr.body.toString("utf8")).toContain("<svg");
+  });
+
   it("does not expose system proxy onboarding routes", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const app = createApp({
@@ -107,6 +138,60 @@ describe("createApp", () => {
       });
       expect(flow.requestBodyPreview.preview).toContain('"hello":"relay"');
       expect(flow.responseBodyPreview.preview).toContain('"ok":true');
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
+  it("shows only relay flows bound to the current dashboard session", async () => {
+    const upstream = http.createServer((request, response) => {
+      expect(request.headers["x-rela-capture-session"]).toBeUndefined();
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true, url: request.url }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const app = createApp({
+        store,
+        lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
+      });
+      const firstBrowser = request.agent(app);
+      const secondBrowser = request.agent(app);
+      const firstSession = (await firstBrowser.get("/api/status").expect(200)).body.session.id;
+      const secondSession = (await secondBrowser.get("/api/status").expect(200)).body.session.id;
+
+      await request(app)
+        .get("/relay/rela/v1/first")
+        .set("X-Rela-Capture-Session", firstSession)
+        .expect(200);
+      await request(app)
+        .get("/relay/rela/v1/second")
+        .set("X-Rela-Capture-Session", secondSession)
+        .expect(200);
+      await request(app).get("/relay/rela/v1/unbound").expect(200);
+
+      const firstFlows = await firstBrowser.get("/api/flows").expect(200);
+      const secondFlows = await secondBrowser.get("/api/flows").expect(200);
+      expect(firstFlows.body.flows.map((flow: { path: string }) => flow.path)).toEqual([
+        "/v1/first"
+      ]);
+      expect(secondFlows.body.flows.map((flow: { path: string }) => flow.path)).toEqual([
+        "/v1/second"
+      ]);
+
+      const firstFlowId = firstFlows.body.flows[0].id;
+      await secondBrowser.get(`/api/flows/${firstFlowId}`).expect(404);
+      await firstBrowser.post("/api/flows/clear").expect(200);
+
+      expect((await firstBrowser.get("/api/flows").expect(200)).body.flows).toHaveLength(0);
+      expect((await secondBrowser.get("/api/flows").expect(200)).body.flows).toHaveLength(1);
     } finally {
       await closeServer(upstream);
     }
@@ -271,14 +356,17 @@ describe("createApp", () => {
 
     try {
       const address = server.address() as AddressInfo;
-      const sseResponse = await fetch(`http://127.0.0.1:${address.port}/api/events`);
+      const cookie = await dashboardCookie(server);
+      const sseResponse = await fetch(`http://127.0.0.1:${address.port}/api/events`, {
+        headers: { cookie }
+      });
       expect(sseResponse.status).toBe(200);
       expect(sseResponse.body).not.toBeNull();
 
       const reader = sseResponse.body!.getReader();
       const clearEvent = withTimeout(readUntil(reader, '"type":"clear"'), 1000);
 
-      await request(server).post("/api/flows/clear").expect(200);
+      await request(server).post("/api/flows/clear").set("Cookie", cookie).expect(200);
 
       const body = await clearEvent;
       expect(body).toContain('data: {"type":"clear"}');
@@ -352,8 +440,14 @@ describe("createApp", () => {
     try {
       const firstAddress = firstServer.address() as AddressInfo;
       const secondAddress = secondServer.address() as AddressInfo;
-      const firstResponse = await fetch(`http://127.0.0.1:${firstAddress.port}/api/events`);
-      const secondResponse = await fetch(`http://127.0.0.1:${secondAddress.port}/api/events`);
+      const firstCookie = await dashboardCookie(firstServer);
+      const secondCookie = await dashboardCookie(secondServer);
+      const firstResponse = await fetch(`http://127.0.0.1:${firstAddress.port}/api/events`, {
+        headers: { cookie: firstCookie }
+      });
+      const secondResponse = await fetch(`http://127.0.0.1:${secondAddress.port}/api/events`, {
+        headers: { cookie: secondCookie }
+      });
       expect(firstResponse.body).not.toBeNull();
       expect(secondResponse.body).not.toBeNull();
 
@@ -363,7 +457,7 @@ describe("createApp", () => {
       const firstClear = withTimeout(readUntil(firstReader, '"type":"clear"'), 1000);
       const secondClear = readUntil(secondReader, '"type":"clear"');
 
-      await request(firstServer).post("/api/flows/clear").expect(200);
+      await request(firstServer).post("/api/flows/clear").set("Cookie", firstCookie).expect(200);
 
       expect(await firstClear).toContain('data: {"type":"clear"}');
       await expect(withTimeout(secondClear, 100)).rejects.toThrow("Timed out");
@@ -592,4 +686,20 @@ async function closeServer(server: Server): Promise<void> {
       resolve();
     });
   });
+}
+
+async function dashboardCookie(server: Server): Promise<string> {
+  const response = await request(server).get("/api/status").expect(200);
+  return setCookieHeaders(response)
+    .map((cookie: string) => cookie.split(";")[0])
+    .join("; ");
+}
+
+function setCookieHeaders(response: { headers: Record<string, string | string[] | undefined> }) {
+  const value = response.headers["set-cookie"];
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ? [value] : [];
 }
