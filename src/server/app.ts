@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 import { FlowStore } from "./flowStore.js";
 import type { LanAddress } from "./lan.js";
-import { createRelayHandler } from "./relay.js";
+import { createRelayHandler, relayAllowedTargetHosts } from "./relay.js";
 import { captureSessionQrPayload, ensureCaptureSession } from "./session.js";
 import type { CapturedFlow, FlowFilters } from "./types.js";
 
@@ -14,6 +14,8 @@ export type CreateAppOptions = {
   advertiseHost?: string;
   dashboardHost?: string;
   dashboardPort: number;
+  relayAllowedHosts?: readonly string[];
+  relayHostOverrides?: Record<string, string>;
   relayTargetOrigin?: string;
 };
 
@@ -158,6 +160,7 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     options.lanAddresses
   );
   const relayTargetOrigin = options.relayTargetOrigin ?? "https://api.rela.me";
+  const relayAllowedHosts = relayAllowedTargetHosts(options.relayAllowedHosts);
   const relayBaseUrl = `${absoluteHttpUrl(dashboardHost, options.dashboardPort)}/relay/rela`;
 
   app.all(
@@ -165,6 +168,8 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     express.raw({ type: "*/*", limit: "20mb" }),
     createRelayHandler({
       broadcastFlow: eventHub.broadcastFlow,
+      allowedTargetHosts: relayAllowedHosts,
+      hostOriginOverrides: options.relayHostOverrides,
       prefix: "/relay/rela",
       store: options.store,
       targetOrigin: relayTargetOrigin
@@ -183,6 +188,7 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
       dashboard: { host: dashboardHost, port: options.dashboardPort },
       relay: {
         rela: {
+          allowedHosts: relayAllowedHosts,
           baseUrl: relayBaseUrl,
           targetOrigin: relayTargetOrigin
         }

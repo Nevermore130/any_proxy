@@ -38,6 +38,18 @@ describe("createApp", () => {
     expect(response.body).not.toHaveProperty("mitmproxy");
     expect(response.body.relay.rela.baseUrl).toBe("http://192.168.1.10:5177/relay/rela");
     expect(response.body.relay.rela.targetOrigin).toBe("https://api.rela.me");
+    expect(response.body.relay.rela.allowedHosts).toEqual(
+      expect.arrayContaining([
+        "api.rela.me",
+        "test-api.rela.me",
+        "ali-pre-api.rela.me",
+        "go-rela.me",
+        "test-go-room-server.rela.me",
+        "go-rela-pre.rela.me",
+        "test-report-api.rela.me",
+        "test-web-api.rela.me"
+      ])
+    );
     expect(response.body.lanAddresses[0].address).toBe("192.168.1.10");
   });
 
@@ -138,6 +150,93 @@ describe("createApp", () => {
       });
       expect(flow.requestBodyPreview.preview).toContain('"hello":"relay"');
       expect(flow.responseBodyPreview.preview).toContain('"ok":true');
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
+  it("routes live service relay requests by their original Rela host", async () => {
+    const upstream = http.createServer((request, response) => {
+      expect(request.method).toBe("GET");
+      expect(request.url).toBe("/go/room-server/treasure?debug=1");
+      expect(request.headers.host).toBe(`127.0.0.1:${(upstream.address() as AddressInfo).port}`);
+      expect(request.headers["x-rela-capture-session"]).toBeUndefined();
+
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true, from: "live-service" }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const app = createApp({
+        store,
+        lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+        dashboardPort: 5177,
+        relayTargetOrigin: "https://api.rela.me",
+        relayHostOverrides: {
+          "go-rela.me": `http://127.0.0.1:${upstreamAddress.port}`
+        }
+      });
+
+      const response = await request(app)
+        .get("/relay/rela/go/room-server/treasure?debug=1")
+        .set("host", "go-rela.me")
+        .set("X-Rela-Capture-Session", "cap_abcdefghijklmnopqrstuvwxyz")
+        .expect(200);
+
+      expect(response.body).toEqual({ ok: true, from: "live-service" });
+
+      const [flow] = store.listFlows({});
+      expect(flow).toMatchObject({
+        method: "GET",
+        scheme: "http",
+        host: "127.0.0.1",
+        port: upstreamAddress.port,
+        path: "/go/room-server/treasure?debug=1",
+        statusCode: 200
+      });
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
+  it("ignores non-Rela host headers for relay routing", async () => {
+    const upstream = http.createServer((request, response) => {
+      expect(request.url).toBe("/v1/me");
+      expect(request.headers.host).toBe(`127.0.0.1:${(upstream.address() as AddressInfo).port}`);
+
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const app = createApp({
+        store,
+        lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
+      });
+
+      await request(app)
+        .get("/relay/rela/v1/me")
+        .set("host", "metadata.google.internal")
+        .expect(200);
+
+      const [flow] = store.listFlows({});
+      expect(flow).toMatchObject({
+        host: "127.0.0.1",
+        port: upstreamAddress.port,
+        path: "/v1/me"
+      });
     } finally {
       await closeServer(upstream);
     }

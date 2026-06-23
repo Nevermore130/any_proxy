@@ -6,6 +6,8 @@ import type { CapturedFlow, HeaderPair, RawBodyEncoding, RawCapturedFlow } from 
 
 export type RelayOptions = {
   broadcastFlow: (flow: CapturedFlow) => void;
+  allowedTargetHosts?: readonly string[];
+  hostOriginOverrides?: Record<string, string>;
   prefix: string;
   store: FlowStore;
   targetOrigin: string;
@@ -33,13 +35,39 @@ const RESPONSE_HEADERS_TO_DROP = new Set([
   "content-encoding",
   "content-length"
 ]);
+export const DEFAULT_RELA_RELAY_TARGET_HOSTS = [
+  "api.rela.me",
+  "test-api.rela.me",
+  "pre-api.rela.me",
+  "ali-pre-api.rela.me",
+  "benchmark-api.rela.me",
+  "go-rela.me",
+  "test-go-room-server.rela.me",
+  "test-go.rela.me",
+  "go-rela-pre.rela.me",
+  "go-rela-benchmark.rela.me",
+  "report-api.rela.me",
+  "test-report-api.rela.me",
+  "pre-report-api.rela.me",
+  "web-api.rela.me",
+  "test-web-api.rela.me",
+  "pre-web-api.rela.me"
+] as const;
 
 export function createRelayHandler(options: RelayOptions): RequestHandler {
   const targetOrigin = normalizeTargetOrigin(options.targetOrigin);
+  const allowedTargetHosts = normalizedAllowedTargetHosts(options.allowedTargetHosts);
+  const hostOriginOverrides = normalizedHostOriginOverrides(options.hostOriginOverrides);
 
   return async (request, response) => {
     const startedAt = Date.now();
-    const targetUrl = createTargetUrl(request, options.prefix, targetOrigin);
+    const requestTargetOrigin = relayTargetOriginForRequest(
+      request,
+      targetOrigin,
+      allowedTargetHosts,
+      hostOriginOverrides
+    );
+    const targetUrl = createTargetUrl(request, options.prefix, requestTargetOrigin);
     const requestBody = requestBodyBuffer(request);
     const requestHeaders = headerPairs(request.headers);
     const target = new URL(targetUrl);
@@ -105,6 +133,67 @@ function normalizeTargetOrigin(origin: string): string {
   }
 
   return parsed.origin;
+}
+
+export function relayAllowedTargetHosts(allowedTargetHosts?: readonly string[]): string[] {
+  return Array.from(
+    new Set(
+      (allowedTargetHosts ?? DEFAULT_RELA_RELAY_TARGET_HOSTS)
+        .map(normalizedHostname)
+        .filter((host): host is string => Boolean(host))
+    )
+  );
+}
+
+function normalizedAllowedTargetHosts(allowedTargetHosts?: readonly string[]): Set<string> {
+  return new Set(relayAllowedTargetHosts(allowedTargetHosts));
+}
+
+function normalizedHostOriginOverrides(overrides?: Record<string, string>): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const [host, origin] of Object.entries(overrides ?? {})) {
+    const normalizedHost = normalizedHostname(host);
+    if (!normalizedHost) {
+      throw new Error(`Invalid relay host override host: ${host}`);
+    }
+    result.set(normalizedHost, normalizeTargetOrigin(origin));
+  }
+  return result;
+}
+
+function relayTargetOriginForRequest(
+  request: Request,
+  fallbackTargetOrigin: string,
+  allowedTargetHosts: Set<string>,
+  hostOriginOverrides: Map<string, string>
+): string {
+  const originalHost = originalRequestHostname(request);
+  if (!originalHost || !allowedTargetHosts.has(originalHost)) {
+    return fallbackTargetOrigin;
+  }
+
+  return (
+    hostOriginOverrides.get(originalHost) ??
+    `${new URL(fallbackTargetOrigin).protocol}//${originalHost}`
+  );
+}
+
+function originalRequestHostname(request: Request): string | undefined {
+  const host = request.headers.host;
+  return typeof host === "string" ? normalizedHostname(host) : undefined;
+}
+
+function normalizedHostname(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    return new URL(`http://${trimmed}`).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
 }
 
 function createTargetUrl(request: Request, prefix: string, targetOrigin: string): string {

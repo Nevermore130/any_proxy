@@ -252,6 +252,7 @@ export function App() {
 
   const relayUrl = status?.relay?.rela?.baseUrl || "/relay/rela";
   const targetOrigin = status?.relay?.rela?.targetOrigin || "unknown";
+  const relayAllowedHosts = status?.relay?.rela?.allowedHosts ?? [];
   const captureSessionId = status?.session?.id || "";
   const sessionQrUrl = captureSessionId
     ? `/api/session/qr.svg?sid=${encodeURIComponent(captureSessionId)}`
@@ -330,6 +331,27 @@ export function App() {
             <span className="label">Bind App</span>
             <strong>{captureSessionId ? "Scan QR" : "Loading..."}</strong>
           </div>
+        </div>
+      </section>
+
+      <section
+        className="supported-hosts"
+        hidden={relayAllowedHosts.length === 0}
+        aria-label="Supported relay hosts"
+      >
+        <span className="label">Supported relay hosts</span>
+        <div className="host-chip-list">
+          {relayAllowedHosts.map((host) => (
+            <button
+              aria-pressed={filters.host === host}
+              className="host-chip"
+              key={host}
+              type="button"
+              onClick={() => updateFilter("host", host)}
+            >
+              {host}
+            </button>
+          ))}
         </div>
       </section>
 

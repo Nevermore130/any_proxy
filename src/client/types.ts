@@ -50,6 +50,7 @@ export type StatusResponse = {
   };
   relay?: {
     rela?: {
+      allowedHosts?: string[];
       baseUrl?: string;
       targetOrigin?: string;
     };
