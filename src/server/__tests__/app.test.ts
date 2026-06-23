@@ -46,8 +46,16 @@ describe("createApp", () => {
         "go-rela.me",
         "test-go-room-server.rela.me",
         "go-rela-pre.rela.me",
-        "test-report-api.rela.me",
-        "test-web-api.rela.me"
+        "test-report-api.rela.me"
+      ])
+    );
+    expect(response.body.relay.rela.allowedHosts).not.toEqual(
+      expect.arrayContaining([
+        "benchmark-api.rela.me",
+        "go-rela-benchmark.rela.me",
+        "web-api.rela.me",
+        "test-web-api.rela.me",
+        "pre-web-api.rela.me"
       ])
     );
     expect(response.body.lanAddresses[0].address).toBe("192.168.1.10");

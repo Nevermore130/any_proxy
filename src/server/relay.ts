@@ -40,18 +40,13 @@ export const DEFAULT_RELA_RELAY_TARGET_HOSTS = [
   "test-api.rela.me",
   "pre-api.rela.me",
   "ali-pre-api.rela.me",
-  "benchmark-api.rela.me",
   "go-rela.me",
   "test-go-room-server.rela.me",
   "test-go.rela.me",
   "go-rela-pre.rela.me",
-  "go-rela-benchmark.rela.me",
   "report-api.rela.me",
   "test-report-api.rela.me",
-  "pre-report-api.rela.me",
-  "web-api.rela.me",
-  "test-web-api.rela.me",
-  "pre-web-api.rela.me"
+  "pre-report-api.rela.me"
 ] as const;
 
 export function createRelayHandler(options: RelayOptions): RequestHandler {

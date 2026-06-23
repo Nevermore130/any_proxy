@@ -1,13 +1,23 @@
-import { ArrowRightIcon } from "@phosphor-icons/react/dist/csr/ArrowRight";
 import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
+import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
+import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { bodyCopyButtonState } from "./lib/bodyActions.js";
 import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
+import { compactRelayUrl } from "./lib/dashboardSetup.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
 import type { BodyPreview, CapturedFlow, FlowFilters, StatusResponse } from "./types.js";
@@ -26,6 +36,10 @@ type BannerState = {
   eventsError: string | null;
 };
 
+type DashboardTheme = "light" | "dark";
+
+const themeStorageKey = "rela-capture-theme";
+
 const defaultFilters: FlowFilters = {
   deviceIp: "",
   host: "",
@@ -43,6 +57,7 @@ export function App() {
   const [flowsLoading, setFlowsLoading] = useState(false);
   const [filters, setFilters] = useState<FlowFilters>(defaultFilters);
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [theme, setTheme] = useState<DashboardTheme>(() => readStoredTheme());
   const [banner, setBanner] = useState<BannerState>({
     eventsError: null,
     flowsError: null,
@@ -60,6 +75,11 @@ export function App() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    writeStoredTheme(theme);
+  }, [theme]);
 
   const exportUrl = useMemo(() => {
     const query = filtersToParams(filters).toString();
@@ -251,8 +271,7 @@ export function App() {
   }, []);
 
   const relayUrl = status?.relay?.rela?.baseUrl || "/relay/rela";
-  const targetOrigin = status?.relay?.rela?.targetOrigin || "unknown";
-  const relayAllowedHosts = status?.relay?.rela?.allowedHosts ?? [];
+  const relayDisplayUrl = compactRelayUrl(relayUrl);
   const captureSessionId = status?.session?.id || "";
   const sessionQrUrl = captureSessionId
     ? `/api/session/qr.svg?sid=${encodeURIComponent(captureSessionId)}`
@@ -265,9 +284,10 @@ export function App() {
       ? "Capture paused"
       : "Capturing relay traffic";
   const statusState = banner.statusError ? "error" : paused ? "paused" : "running";
+  const nextTheme = theme === "dark" ? "light" : "dark";
 
   return (
-    <main className="shell">
+    <main className="shell" data-theme={theme}>
       <header className="topbar">
         <div className="topbar__identity">
           <div className="product-mark">RC</div>
@@ -284,6 +304,20 @@ export function App() {
           <SummaryStat label="Latest" value={lastFlowTime} />
         </div>
         <div className="actions" aria-label="Capture controls">
+          <button
+            aria-label={`Switch to ${nextTheme} mode`}
+            className="tool-button theme-toggle"
+            title={`Switch to ${nextTheme} mode`}
+            type="button"
+            onClick={() => setTheme(nextTheme)}
+          >
+            {theme === "dark" ? (
+              <SunIcon size={15} weight="bold" />
+            ) : (
+              <MoonIcon size={15} weight="bold" />
+            )}
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
           <button
             className="tool-button"
             type="button"
@@ -310,16 +344,12 @@ export function App() {
       </header>
 
       <section className="setup" aria-label="Relay setup">
-        <div className="setup__item setup__item--wide">
-          <span className="label">App relay</span>
-          <strong>{relayUrl}</strong>
-        </div>
-        <div className="route-arrow" aria-hidden="true">
-          <ArrowRightIcon size={16} weight="bold" />
-        </div>
-        <div className="setup__item">
-          <span className="label">Upstream</span>
-          <strong>{targetOrigin}</strong>
+        <div className="setup__item setup__relay">
+          <div className="setup__head">
+            <span className="label">App relay</span>
+            <RelayCopyButton relayUrl={relayUrl} />
+          </div>
+          <strong title={relayUrl}>{relayDisplayUrl}</strong>
         </div>
         <div className="setup__qr">
           {sessionQrUrl ? (
@@ -330,28 +360,12 @@ export function App() {
           <div>
             <span className="label">Bind App</span>
             <strong>{captureSessionId ? "Scan QR" : "Loading..."}</strong>
+            {captureSessionId ? (
+              <span className="setup__session" title={captureSessionId}>
+                Session {shortSessionId(captureSessionId)}
+              </span>
+            ) : null}
           </div>
-        </div>
-      </section>
-
-      <section
-        className="supported-hosts"
-        hidden={relayAllowedHosts.length === 0}
-        aria-label="Supported relay hosts"
-      >
-        <span className="label">Supported relay hosts</span>
-        <div className="host-chip-list">
-          {relayAllowedHosts.map((host) => (
-            <button
-              aria-pressed={filters.host === host}
-              className="host-chip"
-              key={host}
-              type="button"
-              onClick={() => updateFilter("host", host)}
-            >
-              {host}
-            </button>
-          ))}
         </div>
       </section>
 
@@ -423,6 +437,26 @@ export function App() {
   );
 }
 
+function readStoredTheme(): DashboardTheme {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  try {
+    return window.localStorage.getItem(themeStorageKey) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function writeStoredTheme(theme: DashboardTheme) {
+  try {
+    window.localStorage.setItem(themeStorageKey, theme);
+  } catch {
+    // Theme persistence is a convenience; the toggle still works without storage access.
+  }
+}
+
 function SummaryStat({
   label,
   tone,
@@ -437,6 +471,40 @@ function SummaryStat({
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
+  );
+}
+
+function RelayCopyButton({ relayUrl }: { relayUrl: string }) {
+  const [labelText, setLabelText] = useState("Copy");
+  const [failed, setFailed] = useState(false);
+
+  async function copy() {
+    try {
+      await copyText(relayUrl);
+      setLabelText("Copied");
+      setFailed(false);
+    } catch {
+      setLabelText("Failed");
+      setFailed(true);
+    } finally {
+      window.setTimeout(() => {
+        setLabelText("Copy");
+        setFailed(false);
+      }, 1200);
+    }
+  }
+
+  return (
+    <button
+      aria-label="Copy App relay URL"
+      className={`relay-copy-button${failed ? " is-error" : ""}`}
+      title="Copy App relay URL"
+      type="button"
+      onClick={() => void copy()}
+    >
+      <CopySimpleIcon size={12} weight="bold" />
+      {labelText}
+    </button>
   );
 }
 
@@ -1098,6 +1166,13 @@ function hostWithPort(flow: CapturedFlow): string {
   const defaultPort =
     (flow.scheme === "https" && flow.port === 443) || (flow.scheme === "http" && flow.port === 80);
   return defaultPort ? flow.host || "" : `${flow.host}:${flow.port}`;
+}
+
+function shortSessionId(value: string): string {
+  if (value.length <= 12) {
+    return value;
+  }
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function safeToken(value: string | undefined): string {
