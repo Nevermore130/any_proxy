@@ -1,5 +1,7 @@
+import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
 import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
+import { GlobeSimpleIcon } from "@phosphor-icons/react/dist/csr/GlobeSimple";
 import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
@@ -17,7 +19,6 @@ import {
 } from "react";
 import { bodyCopyButtonState } from "./lib/bodyActions.js";
 import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
-import { compactRelayUrl } from "./lib/dashboardSetup.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
 import type { BodyPreview, CapturedFlow, FlowFilters, StatusResponse } from "./types.js";
@@ -58,6 +59,7 @@ export function App() {
   const [filters, setFilters] = useState<FlowFilters>(defaultFilters);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [theme, setTheme] = useState<DashboardTheme>(() => readStoredTheme());
+  const [categoryNotice, setCategoryNotice] = useState("");
   const [banner, setBanner] = useState<BannerState>({
     eventsError: null,
     flowsError: null,
@@ -270,8 +272,6 @@ export function App() {
     };
   }, []);
 
-  const relayUrl = status?.relay?.rela?.baseUrl || "/relay/rela";
-  const relayDisplayUrl = compactRelayUrl(relayUrl);
   const captureSessionId = status?.session?.id || "";
   const sessionQrUrl = captureSessionId
     ? `/api/session/qr.svg?sid=${encodeURIComponent(captureSessionId)}`
@@ -343,13 +343,43 @@ export function App() {
         </div>
       </header>
 
-      <section className="setup" aria-label="Relay setup">
-        <div className="setup__item setup__relay">
-          <div className="setup__head">
-            <span className="label">App relay</span>
-            <RelayCopyButton relayUrl={relayUrl} />
+      <section className="setup capture-categories" aria-label="Capture data categories">
+        <div className="category-panel">
+          <div className="category-panel__head">
+            <div>
+              <span className="label">Data categories</span>
+              <strong>Captured traffic</strong>
+            </div>
+            {categoryNotice ? (
+              <span className="category-notice" role="status">
+                {categoryNotice}
+              </span>
+            ) : null}
           </div>
-          <strong title={relayUrl}>{relayDisplayUrl}</strong>
+          <div className="category-actions" aria-label="Capture category selector">
+            <button
+              className="category-card is-active"
+              type="button"
+              onClick={() => setCategoryNotice("")}
+            >
+              <GlobeSimpleIcon size={18} weight="bold" />
+              <span>
+                <strong>HTTP Requests</strong>
+                <small>{flows.length} captured</small>
+              </span>
+            </button>
+            <button
+              className="category-card is-soon"
+              type="button"
+              onClick={() => setCategoryNotice("IM 消息数据开发中，敬请期待")}
+            >
+              <ChatCircleDotsIcon size={18} weight="bold" />
+              <span>
+                <strong>IM Messages</strong>
+                <small>开发中，敬请期待</small>
+              </span>
+            </button>
+          </div>
         </div>
         <div className="setup__qr">
           {sessionQrUrl ? (
@@ -471,40 +501,6 @@ function SummaryStat({
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
-  );
-}
-
-function RelayCopyButton({ relayUrl }: { relayUrl: string }) {
-  const [labelText, setLabelText] = useState("Copy");
-  const [failed, setFailed] = useState(false);
-
-  async function copy() {
-    try {
-      await copyText(relayUrl);
-      setLabelText("Copied");
-      setFailed(false);
-    } catch {
-      setLabelText("Failed");
-      setFailed(true);
-    } finally {
-      window.setTimeout(() => {
-        setLabelText("Copy");
-        setFailed(false);
-      }, 1200);
-    }
-  }
-
-  return (
-    <button
-      aria-label="Copy App relay URL"
-      className={`relay-copy-button${failed ? " is-error" : ""}`}
-      title="Copy App relay URL"
-      type="button"
-      onClick={() => void copy()}
-    >
-      <CopySimpleIcon size={12} weight="bold" />
-      {labelText}
-    </button>
   );
 }
 
