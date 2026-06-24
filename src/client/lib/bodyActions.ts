@@ -1,11 +1,15 @@
 import type { BodyPreview } from "../types.js";
 
 export function bodyCopyText(body: BodyPreview | undefined): string {
-  if (!body || body.kind === "empty" || typeof body.preview !== "string") {
+  if (!body || body.kind === "empty") {
     return "";
   }
 
-  return body.preview;
+  return typeof body.raw === "string"
+    ? body.raw
+    : typeof body.preview === "string"
+      ? body.preview
+      : "";
 }
 
 export function bodyCopyButtonState(body: BodyPreview | undefined, label = "Body") {

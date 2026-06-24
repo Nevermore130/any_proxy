@@ -14,6 +14,19 @@ describe("body action helpers", () => {
     ).toBe("{\"ok\":true,\"items\":[1,2]}");
   });
 
+  it("prefers the complete raw body when the preview is truncated", () => {
+    expect(
+      bodyCopyText({
+        kind: "text",
+        contentType: "application/json",
+        preview: "{\"ok\":",
+        raw: "{\"ok\":true,\"items\":[1,2,3]}",
+        sizeBytes: 27,
+        truncated: true
+      })
+    ).toBe("{\"ok\":true,\"items\":[1,2,3]}");
+  });
+
   it("builds copy button labels for a response body", () => {
     expect(
       bodyCopyButtonState(

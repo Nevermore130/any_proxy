@@ -2,6 +2,7 @@ export type BodyPreview = {
   contentType?: string;
   kind: string;
   preview?: string;
+  raw?: string;
   sizeBytes?: number;
   truncated?: boolean;
 };

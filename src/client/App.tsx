@@ -17,7 +17,7 @@ import {
   useRef,
   useState
 } from "react";
-import { bodyCopyButtonState } from "./lib/bodyActions.js";
+import { bodyCopyButtonState, bodyCopyText } from "./lib/bodyActions.js";
 import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
@@ -38,6 +38,7 @@ type BannerState = {
 };
 
 type DashboardTheme = "light" | "dark";
+type BodyViewMode = "formatted" | "raw";
 
 const themeStorageKey = "rela-capture-theme";
 
@@ -742,7 +743,7 @@ function ResponsePanel({ flow, hidden }: { flow: CapturedFlow; hidden: boolean }
       >
         Body
       </DetailHeading>
-      <BodyViewer body={flow.responseBodyPreview} label="Response Body" />
+      <BodyViewer body={flow.responseBodyPreview} label="Response Body" showFormatTabs />
     </section>
   );
 }
@@ -876,38 +877,85 @@ function CurlCopyButton({ flow }: { flow: CapturedFlow }) {
   );
 }
 
-function BodyViewer({ body, label }: { body: BodyPreview | undefined; label: string }) {
+function BodyViewer({
+  body,
+  label,
+  showFormatTabs = false
+}: {
+  body: BodyPreview | undefined;
+  label: string;
+  showFormatTabs?: boolean;
+}) {
+  const [mode, setMode] = useState<BodyViewMode>("formatted");
+
   if (!body || body.kind === "empty") {
     return <p className="muted detail-empty-line">No {label.toLowerCase()} captured.</p>;
   }
 
+  const rawText = bodyCopyText(body);
   const json = parseJsonBodyPreview(body);
   if (json.ok) {
+    const activeMode = showFormatTabs ? mode : "formatted";
     return (
       <div className="body-viewer json-viewer">
-        <div className="body-viewer__meta">{bodyMetaText(body, "JSON")}</div>
-        <div className="json-tree">
-          <JsonRoot value={json.value} />
-        </div>
+        <BodyViewerHeader
+          body={body}
+          format={activeMode === "formatted" ? "JSON" : "Raw"}
+          mode={activeMode}
+          onModeChange={setMode}
+          showTabs={showFormatTabs}
+        />
+        {activeMode === "formatted" ? (
+          <div className="json-tree">
+            <JsonRoot value={json.value} />
+          </div>
+        ) : (
+          <pre className="raw-body">{rawText}</pre>
+        )}
       </div>
     );
   }
 
-  const preview = body.preview || "";
-  const meta = [
-    body.contentType,
-    body.kind,
-    `${body.sizeBytes ?? 0} bytes`,
-    body.truncated ? "truncated" : ""
-  ]
-    .filter(Boolean)
-    .join(" | ");
-  const text = meta ? `${meta}\n\n${preview}` : preview;
-
   return (
     <div className="body-viewer raw-body-viewer">
       <div className="body-viewer__meta">{bodyMetaText(body, body.kind || "text")}</div>
-      <pre className="raw-body">{text}</pre>
+      <pre className="raw-body">{rawText}</pre>
+    </div>
+  );
+}
+
+function BodyViewerHeader({
+  body,
+  format,
+  mode,
+  onModeChange,
+  showTabs
+}: {
+  body: BodyPreview;
+  format: string;
+  mode: BodyViewMode;
+  onModeChange: (mode: BodyViewMode) => void;
+  showTabs: boolean;
+}) {
+  return (
+    <div className="body-viewer__toolbar">
+      <div className="body-viewer__meta">{bodyMetaText(body, format)}</div>
+      {showTabs ? (
+        <div className="body-mode-tabs" role="tablist" aria-label="Response body view">
+          {(["formatted", "raw"] as const).map((tab) => (
+            <button
+              aria-selected={mode === tab}
+              className="body-mode-tab"
+              key={tab}
+              role="tab"
+              type="button"
+              onClick={() => onModeChange(tab)}
+            >
+              {tab === "formatted" ? "Formatted" : "Raw"}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1184,7 +1232,7 @@ function bodyMetaText(body: BodyPreview, format: string): string {
     body.contentType,
     format,
     `${body.sizeBytes ?? 0} bytes`,
-    body.truncated ? "truncated" : ""
+    body.truncated && !body.raw ? "truncated" : ""
   ].filter(Boolean);
   return meta.join(" | ");
 }

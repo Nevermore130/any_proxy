@@ -17,6 +17,7 @@ describe("createBodyPreview", () => {
       kind: "text",
       sizeBytes: 11,
       preview: "hello",
+      raw: "hello world",
       truncated: true,
       contentType: "text/plain"
     });
@@ -27,8 +28,20 @@ describe("createBodyPreview", () => {
       kind: "text",
       sizeBytes: 6,
       preview: "你",
+      raw: "你好",
       truncated: true,
       contentType: "text/plain"
+    });
+  });
+
+  it("keeps the full raw text body even when the preview is truncated", () => {
+    const body = JSON.stringify({ items: Array.from({ length: 10 }, (_, index) => index) });
+
+    expect(createBodyPreview(body, "application/json", 12)).toMatchObject({
+      kind: "text",
+      preview: body.slice(0, 12),
+      raw: body,
+      truncated: true
     });
   });
 
@@ -47,6 +60,7 @@ describe("createBodyPreview", () => {
       kind: "base64",
       sizeBytes: 5,
       preview: bodyBytes.subarray(0, 3).toString("base64"),
+      raw: bodyBytes.toString("base64"),
       truncated: true,
       contentType: "application/octet-stream"
     });

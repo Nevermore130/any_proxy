@@ -3,17 +3,22 @@ import type { BodyPreview } from "../types.js";
 type JsonParseResult = { ok: true; value: unknown } | { ok: false };
 
 export function parseJsonBodyPreview(body: BodyPreview | undefined): JsonParseResult {
-  if (!body || body.kind !== "text" || body.truncated) {
+  if (!body || body.kind !== "text") {
     return { ok: false };
   }
 
-  const preview = typeof body.preview === "string" ? body.preview.trim() : "";
-  if (!preview || !looksLikeJson(body.contentType, preview)) {
+  const raw = typeof body.raw === "string" ? body.raw : undefined;
+  if (body.truncated && !raw) {
+    return { ok: false };
+  }
+
+  const text = (raw ?? (typeof body.preview === "string" ? body.preview : "")).trim();
+  if (!text || !looksLikeJson(body.contentType, text)) {
     return { ok: false };
   }
 
   try {
-    return { ok: true, value: JSON.parse(preview) as unknown };
+    return { ok: true, value: JSON.parse(text) as unknown };
   } catch {
     return { ok: false };
   }

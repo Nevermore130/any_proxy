@@ -8,6 +8,7 @@ export type BodyPreview = {
   kind: "empty" | "text" | "base64";
   sizeBytes: number;
   preview: string;
+  raw?: string;
   truncated: boolean;
   contentType?: string;
 };

@@ -55,10 +55,14 @@ function reusableHeaders(headers: CapturedFlow["requestHeaders"]): Array<[string
 }
 
 function requestBodyText(body: BodyPreview | undefined): string {
-  if (!body || body.kind === "empty" || typeof body.preview !== "string") {
+  if (!body || body.kind === "empty") {
     return "";
   }
-  return body.preview;
+  return typeof body.raw === "string"
+    ? body.raw
+    : typeof body.preview === "string"
+      ? body.preview
+      : "";
 }
 
 function flowHostWithPort(flow: CapturedFlow): string {

@@ -47,6 +47,31 @@ describe("FlowStore", () => {
     expect(flow?.responseBodyPreview.preview).toBe("{\"ok\":true}");
   });
 
+  it("keeps complete raw bodies when previews are truncated", () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 8 });
+    const responseBody = JSON.stringify({
+      ok: true,
+      items: Array.from({ length: 20 }, (_, index) => ({ id: index }))
+    });
+
+    store.ingest({
+      eventType: "response",
+      flow: {
+        ...requestEvent.flow,
+        durationMs: 25,
+        statusCode: 200,
+        responseHeaders: [["content-type", "application/json"]],
+        responseBody,
+        responseContentType: "application/json"
+      }
+    });
+
+    const flow = store.getFlow("flow-1");
+    expect(flow?.responseBodyPreview.preview).not.toBe(responseBody);
+    expect(flow?.responseBodyPreview.truncated).toBe(true);
+    expect(flow?.responseBodyPreview.raw).toBe(responseBody);
+  });
+
   it("preserves existing request previews when later events omit request body", () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 5 });
     store.ingest({
@@ -109,11 +134,13 @@ describe("FlowStore", () => {
     const flow = store.getFlow("flow-1");
     expect(flow?.requestBodyPreview.sizeBytes).toBe(4);
     expect(flow?.requestBodyPreview.preview).toBe(requestBytes.subarray(0, 3).toString("base64"));
+    expect(flow?.requestBodyPreview.raw).toBe(requestBytes.toString("base64"));
     expect(flow?.requestBodyPreview.truncated).toBe(true);
     expect(flow?.responseBodyPreview.sizeBytes).toBe(4);
     expect(flow?.responseBodyPreview.preview).toBe(
       responseBytes.subarray(0, 3).toString("base64")
     );
+    expect(flow?.responseBodyPreview.raw).toBe(responseBytes.toString("base64"));
     expect(flow?.responseBodyPreview.truncated).toBe(true);
   });
 

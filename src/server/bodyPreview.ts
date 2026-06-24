@@ -36,6 +36,7 @@ export function createBodyPreview(
       kind: "base64",
       sizeBytes,
       preview: limited.toString("base64"),
+      ...(truncated ? { raw: buffer.toString("base64") } : {}),
       truncated,
       contentType: normalizedType
     };
@@ -54,6 +55,7 @@ export function createBodyPreview(
     kind: looksTextual ? "text" : "base64",
     sizeBytes,
     preview: looksTextual ? truncateUtf8Text(body, byteLimit) : limited.toString("base64"),
+    ...(truncated ? { raw: looksTextual ? body : buffer.toString("base64") } : {}),
     truncated,
     contentType: normalizedType
   };
