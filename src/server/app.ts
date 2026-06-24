@@ -1,4 +1,5 @@
 import express, { type Express, type Response } from "express";
+import { isIP } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
@@ -161,7 +162,7 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   );
   const relayTargetOrigin = options.relayTargetOrigin ?? "https://api.rela.me";
   const relayAllowedHosts = relayAllowedTargetHosts(options.relayAllowedHosts);
-  const relayBaseUrl = `${absoluteHttpUrl(dashboardHost, options.dashboardPort)}/relay/rela`;
+  const relayBaseUrl = `${publicHttpOrigin(dashboardHost, options.dashboardPort)}/relay/rela`;
 
   app.all(
     /^\/relay\/rela(?:\/.*)?$/,
@@ -282,8 +283,70 @@ export function dashboardStaticDirs(rootDir: string): string[] {
   return [path.join(rootDir, "dist", "public"), path.join(rootDir, "public")];
 }
 
-function absoluteHttpUrl(host: string, port: number): string {
-  return `http://${hostForUrl(host)}:${port}`;
+export function publicHttpOrigin(host: string, port: number): string {
+  const value = host.trim();
+  const origin = originFromConfiguredHost(value);
+  if (!origin) {
+    return `http://localhost:${port}`;
+  }
+
+  const url = new URL(origin);
+  if (hasExplicitPort(value) || isPublicDnsHost(url.hostname)) {
+    return url.origin;
+  }
+
+  return `http://${hostForUrl(url.hostname)}:${port}`;
+}
+
+function originFromConfiguredHost(host: string): string | undefined {
+  if (!host) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(host);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.origin;
+    }
+  } catch {
+    // Continue below: most configs are bare hosts, not full URLs.
+  }
+
+  try {
+    return new URL(`http://${hostForParsing(host)}`).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasExplicitPort(host: string): boolean {
+  const value = host.trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    return new URL(value).port !== "";
+  }
+
+  if (value.startsWith("[")) {
+    return /\]:\d+$/.test(value);
+  }
+  if (isIP(value) !== 0) {
+    return false;
+  }
+
+  return /:\d+$/.test(value);
+}
+
+function isPublicDnsHost(hostname: string): boolean {
+  return hostname !== "localhost" && isIP(hostname) === 0;
+}
+
+function hostForParsing(host: string): string {
+  if (isIP(host) === 6) {
+    return `[${host}]`;
+  }
+  if (host.includes(":") && !host.startsWith("[") && !/:\d+$/.test(host)) {
+    return `[${host}]`;
+  }
+  return host;
 }
 
 function hostForUrl(host: string): string {

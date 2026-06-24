@@ -163,36 +163,49 @@ describe("createApp", () => {
     }
   });
 
-  it("routes live service relay requests by their original Rela host", async () => {
-    const upstream = http.createServer((request, response) => {
+  it("routes live service relay requests by their X-Rela-Original-Host header", async () => {
+    const fallbackUpstream = http.createServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true, from: "fallback" }));
+    });
+    fallbackUpstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => fallbackUpstream.once("listening", resolve));
+
+    const routedUpstream = http.createServer((request, response) => {
       expect(request.method).toBe("GET");
       expect(request.url).toBe("/go/room-server/treasure?debug=1");
-      expect(request.headers.host).toBe(`127.0.0.1:${(upstream.address() as AddressInfo).port}`);
+      expect(request.headers.host).toBe(
+        `127.0.0.1:${(routedUpstream.address() as AddressInfo).port}`
+      );
       expect(request.headers["x-rela-capture-session"]).toBeUndefined();
+      expect(request.headers["x-rela-original-host"]).toBeUndefined();
 
       response.statusCode = 200;
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.end(JSON.stringify({ ok: true, from: "live-service" }));
     });
-    upstream.listen(0, "127.0.0.1");
-    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+    routedUpstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => routedUpstream.once("listening", resolve));
 
     try {
-      const upstreamAddress = upstream.address() as AddressInfo;
+      const fallbackAddress = fallbackUpstream.address() as AddressInfo;
+      const routedAddress = routedUpstream.address() as AddressInfo;
       const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
       const app = createApp({
         store,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
-        relayTargetOrigin: "https://api.rela.me",
+        relayTargetOrigin: `http://127.0.0.1:${fallbackAddress.port}`,
         relayHostOverrides: {
-          "go-rela.me": `http://127.0.0.1:${upstreamAddress.port}`
+          "go-rela.me": `http://127.0.0.1:${routedAddress.port}`
         }
       });
 
       const response = await request(app)
         .get("/relay/rela/go/room-server/treasure?debug=1")
-        .set("host", "go-rela.me")
+        .set("host", "anyproxy.cpolar.top")
+        .set("X-Rela-Original-Host", "go-rela.me")
         .set("X-Rela-Capture-Session", "cap_abcdefghijklmnopqrstuvwxyz")
         .expect(200);
 
@@ -203,16 +216,70 @@ describe("createApp", () => {
         method: "GET",
         scheme: "http",
         host: "127.0.0.1",
-        port: upstreamAddress.port,
+        port: routedAddress.port,
         path: "/go/room-server/treasure?debug=1",
         statusCode: 200
       });
     } finally {
-      await closeServer(upstream);
+      await Promise.all([closeServer(fallbackUpstream), closeServer(routedUpstream)]);
     }
   });
 
-  it("ignores non-Rela host headers for relay routing", async () => {
+  it("does not route relay requests by the standard Host header", async () => {
+    const fallbackUpstream = http.createServer((request, response) => {
+      expect(request.url).toBe("/v1/me");
+      expect(request.headers.host).toBe(
+        `127.0.0.1:${(fallbackUpstream.address() as AddressInfo).port}`
+      );
+
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true, from: "fallback" }));
+    });
+    fallbackUpstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => fallbackUpstream.once("listening", resolve));
+
+    const routedUpstream = http.createServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true, from: "host-header" }));
+    });
+    routedUpstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => routedUpstream.once("listening", resolve));
+
+    try {
+      const fallbackAddress = fallbackUpstream.address() as AddressInfo;
+      const routedAddress = routedUpstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const app = createApp({
+        store,
+        lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${fallbackAddress.port}`,
+        relayHostOverrides: {
+          "go-rela.me": `http://127.0.0.1:${routedAddress.port}`
+        }
+      });
+
+      const response = await request(app)
+        .get("/relay/rela/v1/me")
+        .set("host", "go-rela.me")
+        .expect(200);
+
+      expect(response.body).toEqual({ ok: true, from: "fallback" });
+
+      const [flow] = store.listFlows({});
+      expect(flow).toMatchObject({
+        host: "127.0.0.1",
+        port: fallbackAddress.port,
+        path: "/v1/me"
+      });
+    } finally {
+      await Promise.all([closeServer(fallbackUpstream), closeServer(routedUpstream)]);
+    }
+  });
+
+  it("ignores non-Rela X-Rela-Original-Host values for relay routing", async () => {
     const upstream = http.createServer((request, response) => {
       expect(request.url).toBe("/v1/me");
       expect(request.headers.host).toBe(`127.0.0.1:${(upstream.address() as AddressInfo).port}`);
@@ -236,7 +303,8 @@ describe("createApp", () => {
 
       await request(app)
         .get("/relay/rela/v1/me")
-        .set("host", "metadata.google.internal")
+        .set("host", "anyproxy.cpolar.top")
+        .set("X-Rela-Original-Host", "metadata.google.internal")
         .expect(200);
 
       const [flow] = store.listFlows({});
@@ -332,18 +400,38 @@ describe("createApp", () => {
     expect(flow.error).toContain("Relay request failed");
   });
 
-  it("uses advertised host for cloud-facing dashboard and relay URLs", async () => {
+  it("omits the dashboard port from public DNS advertised relay URLs", async () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const browser = request.agent(
+      createApp({
+        store,
+        lanAddresses: [{ interfaceName: "eth0", address: "172.18.0.2" }],
+        advertiseHost: "anyproxy.cpolar.top",
+        dashboardHost: "0.0.0.0",
+        dashboardPort: 5177
+      })
+    );
+
+    const status = await browser.get("/api/status").expect(200);
+    expect(status.body.dashboard.host).toBe("anyproxy.cpolar.top");
+    expect(status.body.relay.rela.baseUrl).toBe("http://anyproxy.cpolar.top/relay/rela");
+    expect(status.body.session.qrPayload.relayBaseUrl).toBe(
+      "http://anyproxy.cpolar.top/relay/rela"
+    );
+  });
+
+  it("preserves an explicit advertised port for cloud-facing relay URLs", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const app = createApp({
       store,
       lanAddresses: [{ interfaceName: "eth0", address: "172.18.0.2" }],
-      advertiseHost: "capture.example.com",
+      advertiseHost: "capture.example.com:5177",
       dashboardHost: "0.0.0.0",
       dashboardPort: 5177
     });
 
     const status = await request(app).get("/api/status").expect(200);
-    expect(status.body.dashboard.host).toBe("capture.example.com");
+    expect(status.body.dashboard.host).toBe("capture.example.com:5177");
     expect(status.body.relay.rela.baseUrl).toBe(
       "http://capture.example.com:5177/relay/rela"
     );

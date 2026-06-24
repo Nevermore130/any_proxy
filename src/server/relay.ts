@@ -23,11 +23,13 @@ const HOP_BY_HOP_HEADERS = new Set([
   "transfer-encoding",
   "upgrade"
 ]);
+export const relayOriginalHostHeaderName = "X-Rela-Original-Host";
 
 const REQUEST_HEADERS_TO_DROP = new Set([
   ...HOP_BY_HOP_HEADERS,
   "content-length",
   "host",
+  relayOriginalHostHeaderName.toLowerCase(),
   captureSessionHeaderName.toLowerCase()
 ]);
 const RESPONSE_HEADERS_TO_DROP = new Set([
@@ -174,8 +176,11 @@ function relayTargetOriginForRequest(
 }
 
 function originalRequestHostname(request: Request): string | undefined {
-  const host = request.headers.host;
-  return typeof host === "string" ? normalizedHostname(host) : undefined;
+  const originalHostHeader = request.headers[relayOriginalHostHeaderName.toLowerCase()];
+  const originalHost = Array.isArray(originalHostHeader)
+    ? originalHostHeader[0]
+    : originalHostHeader;
+  return typeof originalHost === "string" ? normalizedHostname(originalHost) : undefined;
 }
 
 function normalizedHostname(value: string): string | undefined {

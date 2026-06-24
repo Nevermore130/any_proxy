@@ -2,7 +2,7 @@ import type { Express } from "express";
 import http, { type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createCaptureApp } from "./app.js";
+import { createCaptureApp, publicHttpOrigin } from "./app.js";
 import { loadConfig, type RuntimeConfig } from "./config.js";
 import { FlowStore } from "./flowStore.js";
 import { getLanAddresses, type LanAddress } from "./lan.js";
@@ -81,8 +81,9 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
   server.listen(config.dashboardPort, config.dashboardHost, () => {
     dashboardListening = true;
     const dashboardHost = advertisedHost(config.advertiseHost ?? config.dashboardHost, lanAddresses);
-    logger.log(`Rela Capture dashboard: http://${dashboardHost}:${config.dashboardPort}`);
-    logger.log(`Rela App relay: http://${dashboardHost}:${config.dashboardPort}/relay/rela -> ${config.relayTargetOrigin}`);
+    const publicOrigin = publicHttpOrigin(dashboardHost, config.dashboardPort);
+    logger.log(`Rela Capture dashboard: ${publicOrigin}`);
+    logger.log(`Rela App relay: ${publicOrigin}/relay/rela -> ${config.relayTargetOrigin}`);
   });
 
   const close = (onClosed?: () => void): void => {

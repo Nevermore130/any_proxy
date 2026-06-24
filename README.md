@@ -48,27 +48,37 @@ Set the Rela app debug API base URL to:
 http://<host>:5177/relay/rela
 ```
 
-By default, the relay forwards requests to:
+When the relay is exposed through a public HTTP tunnel or reverse proxy that already maps
+port 80 to this service, use that public URL directly:
 
 ```text
-https://api.rela.me
+http://anyproxy.cpolar.top/relay/rela
 ```
 
-For example, an app request to:
+The app sends the original Rela API host in this header while relay mode is active:
+
+```text
+X-Rela-Original-Host: api.rela.me
+```
+
+For example, if the app calls:
 
 ```text
 http://<host>:5177/relay/rela/v1/me?debug=1
 ```
 
-is forwarded to:
+with `X-Rela-Original-Host: test-api.rela.me`, the relay forwards it to:
 
 ```text
-https://api.rela.me/v1/me?debug=1
+https://test-api.rela.me/v1/me?debug=1
 ```
 
 The relay returns the upstream response to the app and records the exchange in the dashboard.
+The normal HTTP `Host` header should stay as the relay service host, such as
+`anyproxy.cpolar.top`; it is not used for upstream routing.
 
-Override the upstream origin when needed:
+`RELA_RELAY_TARGET_ORIGIN` is the fallback upstream origin when
+`X-Rela-Original-Host` is missing or not in the supported Rela host list:
 
 ```bash
 RELA_RELAY_TARGET_ORIGIN=https://api.rela.me
@@ -87,6 +97,17 @@ Edit `.env` and set:
 ```bash
 RELA_CAPTURE_ADVERTISE_HOST=<server-public-ip-or-domain>
 RELA_RELAY_TARGET_ORIGIN=https://api.rela.me
+```
+
+For direct CVM access on port `5177`, use the CVM IP or an explicit host with port, such as
+`111.229.187.209` or `capture.example.com:5177`. The generated relay URL will include
+`:5177`.
+
+For a public tunnel/reverse proxy that exposes HTTP on port 80, use the public domain without
+`:5177`, such as `anyproxy.cpolar.top`. The generated dashboard QR payload will use:
+
+```text
+http://anyproxy.cpolar.top/relay/rela
 ```
 
 Start:
@@ -114,6 +135,9 @@ Use this Rela App relay endpoint:
 http://<server-public-ip-or-domain>:5177/relay/rela
 ```
 
+If you use a tunnel domain such as `anyproxy.cpolar.top`, open the tunnel URL and use the relay
+URL shown by the dashboard QR payload instead of manually adding `:5177`.
+
 ## Tencent Cloud CVM Notes
 
 1. Install Docker and the Docker Compose plugin on the CVM.
@@ -136,6 +160,8 @@ If the app must connect to the relay over HTTPS too, put this service behind an 
 
 - No requests appear: confirm the app debug API base URL is set to `/relay/rela`.
 - The app cannot reach the relay: check the server IP/domain, port `5177`, Tencent Cloud security group, and local firewall.
+- Tunnel domain cannot route requests: confirm `RELA_CAPTURE_ADVERTISE_HOST` is set to the
+  public tunnel domain without `:5177`, and confirm the app sends `X-Rela-Original-Host`.
 - Relay returns `502`: check `RELA_RELAY_TARGET_ORIGIN` and whether the server can reach the upstream API.
 - Dashboard shows only recent requests: expired flows are cleaned automatically according to `RELA_CAPTURE_FLOW_TTL_SECONDS`.
 
