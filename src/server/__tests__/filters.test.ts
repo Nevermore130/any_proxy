@@ -31,9 +31,9 @@ describe("flowMatchesFilters", () => {
     expect(flowMatchesFilters(baseFlow, { deviceIp: "1.99" })).toBe(false);
   });
 
-  it("filters by host substring case-insensitively", () => {
-    expect(flowMatchesFilters(baseFlow, { host: "EXAMPLE" })).toBe(true);
-    expect(flowMatchesFilters(baseFlow, { host: "rela" })).toBe(false);
+  it("filters by path substring case-insensitively", () => {
+    expect(flowMatchesFilters(baseFlow, { path: "LOGIN" })).toBe(true);
+    expect(flowMatchesFilters(baseFlow, { path: "logout" })).toBe(false);
   });
 
   it("filters by protocol and status class", () => {

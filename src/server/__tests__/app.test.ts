@@ -462,6 +462,15 @@ describe("createApp", () => {
         statusCode: 200
       })
     });
+    store.ingest({
+      eventType: "response",
+      flow: createRawFlow({
+        id: "flow-2",
+        host: "api.example.com",
+        path: "/v1/profile",
+        statusCode: 200
+      })
+    });
 
     const app = createApp({
       store,
@@ -469,15 +478,16 @@ describe("createApp", () => {
       dashboardPort: 5177
     });
 
-    expect((await request(app).get("/api/flows?host=example").expect(200)).body.flows).toHaveLength(
-      1
-    );
+    const pathFiltered = await request(app).get("/api/flows?path=/v1/me").expect(200);
+    expect(pathFiltered.body.flows.map((flow: { id: string }) => flow.id)).toEqual(["flow-1"]);
     expect((await request(app).get("/api/flows/flow-1").expect(200)).body.flow.host).toBe(
       "api.example.com"
     );
-    expect((await request(app).get("/api/export").expect(200)).headers["content-type"]).toContain(
-      "application/json"
-    );
+    const exported = await request(app).get("/api/export?path=profile").expect(200);
+    expect(exported.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(exported.text).flows.map((flow: { id: string }) => flow.id)).toEqual([
+      "flow-2"
+    ]);
 
     await request(app).post("/api/capture/pause").expect(200);
     expect(store.isPaused()).toBe(true);
@@ -505,6 +515,7 @@ describe("createApp", () => {
         protocol: "http",
         scheme: "http",
         host: "cdn.example.com",
+        path: "/assets/app.js",
         port: 80,
         statusCode: 404
       })
@@ -521,10 +532,10 @@ describe("createApp", () => {
       .expect(200);
     expect(invalidOnly.body.flows).toHaveLength(2);
 
-    const withValidHost = await request(app)
-      .get("/api/flows?protocol=ftp&statusClass=9xx&host=api")
+    const withValidPath = await request(app)
+      .get("/api/flows?protocol=ftp&statusClass=9xx&path=/v1/me")
       .expect(200);
-    expect(withValidHost.body.flows.map((flow: { id: string }) => flow.id)).toEqual(["flow-1"]);
+    expect(withValidPath.body.flows.map((flow: { id: string }) => flow.id)).toEqual(["flow-1"]);
   });
 
   it("returns 404 for missing flows", async () => {

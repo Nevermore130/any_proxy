@@ -362,7 +362,7 @@ function filtersFromQuery(query: Record<string, unknown>): FlowFilters {
 
   return {
     deviceIp: stringQuery(query.deviceIp),
-    host: stringQuery(query.host),
+    path: stringQuery(query.path),
     ...(protocol ? { protocol } : {}),
     ...(statusClass ? { statusClass } : {})
   };

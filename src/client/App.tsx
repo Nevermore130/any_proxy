@@ -43,7 +43,7 @@ const themeStorageKey = "rela-capture-theme";
 
 const defaultFilters: FlowFilters = {
   deviceIp: "",
-  host: "",
+  path: "",
   protocol: "all",
   statusClass: "all"
 };
@@ -414,12 +414,12 @@ export function App() {
           />
         </label>
         <label>
-          <span>Host contains</span>
+          <span>Path contains</span>
           <input
-            value={filters.host}
-            placeholder="api.example.com"
+            value={filters.path}
+            placeholder="/v1/me"
             autoComplete="off"
-            onChange={(event) => updateFilter("host", event.target.value)}
+            onChange={(event) => updateFilter("path", event.target.value)}
           />
         </label>
         <label>
@@ -1021,8 +1021,8 @@ function flowMatchesFilters(flow: CapturedFlow, filters: FlowFilters): boolean {
   }
 
   if (
-    filters.host &&
-    !String(flow.host || "").toLowerCase().includes(filters.host.toLowerCase())
+    filters.path &&
+    !String(flow.path || "").toLowerCase().includes(filters.path.toLowerCase())
   ) {
     return false;
   }
@@ -1078,8 +1078,8 @@ function filtersToParams(filters: FlowFilters): URLSearchParams {
   if (filters.deviceIp) {
     params.set("deviceIp", filters.deviceIp);
   }
-  if (filters.host) {
-    params.set("host", filters.host);
+  if (filters.path) {
+    params.set("path", filters.path);
   }
   if (filters.protocol && filters.protocol !== "all") {
     params.set("protocol", filters.protocol);
@@ -1103,7 +1103,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 function filtersAreActive(filters: FlowFilters): boolean {
   return Boolean(
     filters.deviceIp ||
-      filters.host ||
+      filters.path ||
       filters.protocol !== "all" ||
       filters.statusClass !== "all"
   );

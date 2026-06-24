@@ -5,7 +5,7 @@ export function flowMatchesFilters(flow: CapturedFlow, filters: FlowFilters): bo
     return false;
   }
 
-  if (filters.host && !flow.host.toLowerCase().includes(filters.host.trim().toLowerCase())) {
+  if (filters.path && !flow.path.toLowerCase().includes(filters.path.trim().toLowerCase())) {
     return false;
   }
 

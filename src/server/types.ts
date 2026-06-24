@@ -65,7 +65,7 @@ export type CapturedFlow = {
 
 export type FlowFilters = {
   deviceIp?: string;
-  host?: string;
+  path?: string;
   protocol?: Protocol | "all";
   statusClass?: "all" | "1xx" | "2xx" | "3xx" | "4xx" | "5xx" | "none";
 };
