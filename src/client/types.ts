@@ -26,6 +26,14 @@ export type CapturedFlow = {
   responseHeaders?: Array<[string, string]>;
   requestBodyPreview?: BodyPreview;
   responseBodyPreview?: BodyPreview;
+  appliedRule?: {
+    ruleId: string;
+    ruleName: string;
+    delayed: boolean;
+    delayMs: number;
+    rewritten: boolean;
+    mocked: boolean;
+  };
 };
 
 export type FlowFilters = {
@@ -56,4 +64,26 @@ export type StatusResponse = {
       targetOrigin?: string;
     };
   };
+};
+
+export type RequestRule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match: {
+    method?: string;
+    pathMatch?: string;
+    pathMatchType: "prefix" | "glob";
+    originalHost?: string;
+  };
+  actions: {
+    delayMs: number;
+    mockMode: boolean;
+    mockStatusCode?: number;
+    mockBody?: string;
+    rewriteStatusCode?: number;
+    rewriteBody?: Record<string, unknown>;
+  };
+  createdAt: string;
+  updatedAt: string;
 };

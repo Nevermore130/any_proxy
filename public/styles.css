@@ -1540,3 +1540,190 @@ pre {
     min-width: 760px;
   }
 }
+
+.rules-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(23, 32, 45, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.rules-panel {
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 24px;
+}
+
+.rules-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.rules-panel-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rule-card {
+  background: var(--panel-subtle);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.15s;
+}
+
+.rule-card.is-enabled {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.rule-card.is-disabled {
+  opacity: 0.6;
+}
+
+.rule-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rule-card-header strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rule-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.rule-card-details .label {
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+.icon-button {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 4px;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button:hover {
+  background: var(--control-hover);
+  color: var(--text);
+}
+
+.rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rule-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rule-editor-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.rule-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rule-editor label span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+.rule-editor input,
+.rule-editor select,
+.rule-editor textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.rule-editor input:focus,
+.rule-editor select:focus,
+.rule-editor textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.rule-editor textarea {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.rule-editor-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.applied-rule-badge {
+  background: var(--blue-soft);
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--blue-strong);
+  margin: 8px 0;
+}
+
+.applied-rule-badge strong {
+  font-weight: 600;
+}
