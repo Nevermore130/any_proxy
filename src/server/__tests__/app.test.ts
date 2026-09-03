@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import {
   broadcastFlow,
@@ -11,12 +11,14 @@ import {
   dashboardStaticDirs
 } from "../app.js";
 import { FlowStore } from "../flowStore.js";
+import { RuleStore } from "../ruleStore.js";
 import type { CapturedFlow, RawCapturedFlow } from "../types.js";
 
 afterEach(() => {
   vi.doUnmock("node:http");
   vi.doUnmock("../config.js");
   vi.doUnmock("../lan.js");
+  vi.useRealTimers();
 });
 
 describe("createApp", () => {
@@ -26,8 +28,10 @@ describe("createApp", () => {
 
   it("returns status", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardPort: 5177
     });
@@ -63,8 +67,10 @@ describe("createApp", () => {
 
   it("assigns each dashboard browser a stable capture session and QR payload", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardPort: 5177
     });
@@ -94,8 +100,10 @@ describe("createApp", () => {
 
   it("does not expose system proxy onboarding routes", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardPort: 5177
     });
@@ -130,8 +138,10 @@ describe("createApp", () => {
     try {
       const upstreamAddress = upstream.address() as AddressInfo;
       const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
       const app = createApp({
         store,
+        ruleStore,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
         relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
@@ -192,8 +202,10 @@ describe("createApp", () => {
       const fallbackAddress = fallbackUpstream.address() as AddressInfo;
       const routedAddress = routedUpstream.address() as AddressInfo;
       const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
       const app = createApp({
         store,
+        ruleStore,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
         relayTargetOrigin: `http://127.0.0.1:${fallbackAddress.port}`,
@@ -251,8 +263,10 @@ describe("createApp", () => {
       const fallbackAddress = fallbackUpstream.address() as AddressInfo;
       const routedAddress = routedUpstream.address() as AddressInfo;
       const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
       const app = createApp({
         store,
+        ruleStore,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
         relayTargetOrigin: `http://127.0.0.1:${fallbackAddress.port}`,
@@ -294,8 +308,10 @@ describe("createApp", () => {
     try {
       const upstreamAddress = upstream.address() as AddressInfo;
       const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
       const app = createApp({
         store,
+        ruleStore,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
         relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
@@ -331,8 +347,10 @@ describe("createApp", () => {
     try {
       const upstreamAddress = upstream.address() as AddressInfo;
       const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
       const app = createApp({
         store,
+        ruleStore,
         lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
         dashboardPort: 5177,
         relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
@@ -380,8 +398,10 @@ describe("createApp", () => {
     await closeServer(upstream);
 
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardPort: 5177,
       relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
@@ -402,9 +422,11 @@ describe("createApp", () => {
 
   it("omits the dashboard port from public DNS advertised relay URLs", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const browser = request.agent(
       createApp({
         store,
+        ruleStore,
         lanAddresses: [{ interfaceName: "eth0", address: "172.18.0.2" }],
         advertiseHost: "anyproxy.cpolar.top",
         dashboardHost: "0.0.0.0",
@@ -422,8 +444,10 @@ describe("createApp", () => {
 
   it("preserves an explicit advertised port for cloud-facing relay URLs", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [{ interfaceName: "eth0", address: "172.18.0.2" }],
       advertiseHost: "capture.example.com:5177",
       dashboardHost: "0.0.0.0",
@@ -439,8 +463,10 @@ describe("createApp", () => {
 
   it("prefers concrete configured hosts in status", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
       dashboardHost: "127.0.0.1",
       dashboardPort: 5177
@@ -453,6 +479,7 @@ describe("createApp", () => {
 
   it("lists, filters, clears, pauses, resumes, and exports flows", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     store.ingest({
       eventType: "response",
       flow: createRawFlow({
@@ -474,6 +501,7 @@ describe("createApp", () => {
 
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [],
       dashboardPort: 5177
     });
@@ -499,6 +527,7 @@ describe("createApp", () => {
 
   it("ignores invalid protocol and statusClass query values", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     store.ingest({
       eventType: "response",
       flow: createRawFlow({
@@ -523,6 +552,7 @@ describe("createApp", () => {
 
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [],
       dashboardPort: 5177
     });
@@ -540,8 +570,10 @@ describe("createApp", () => {
 
   it("returns 404 for missing flows", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [],
       dashboardPort: 5177
     });
@@ -551,8 +583,10 @@ describe("createApp", () => {
 
   it("emits a clear event to SSE clients when flows are cleared", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [],
       dashboardPort: 5177
     });
@@ -593,8 +627,10 @@ describe("createApp", () => {
 
   it("exports a compatibility broadcastFlow for createApp SSE clients", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
     const app = createApp({
       store,
+      ruleStore,
       lanAddresses: [],
       dashboardPort: 5177
     });
@@ -625,11 +661,13 @@ describe("createApp", () => {
   it("keeps SSE clients isolated per app instance", async () => {
     const first = createCaptureApp({
       store: new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 }),
+      ruleStore: new RuleStore(),
       lanAddresses: [],
       dashboardPort: 5177
     });
     const second = createCaptureApp({
       store: new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 }),
+      ruleStore: new RuleStore(),
       lanAddresses: [],
       dashboardPort: 5178
     });
@@ -909,3 +947,278 @@ function setCookieHeaders(response: { headers: Record<string, string | string[] 
 
   return value ? [value] : [];
 }
+
+describe("Request Rules", () => {
+  it("lists, creates, updates, and deletes rules", async () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
+    const app = createApp({
+      store,
+      ruleStore,
+      lanAddresses: [],
+      dashboardPort: 5177
+    });
+
+    const emptyList = await request(app).get("/api/rules").expect(200);
+    expect(emptyList.body.rules).toHaveLength(0);
+
+    const created = await request(app)
+      .post("/api/rules")
+      .send({
+        name: "Test Rule",
+        enabled: true,
+        match: {
+          method: "GET",
+          pathMatch: "/v1/me",
+          pathMatchType: "prefix"
+        },
+        actions: {
+          delayMs: 1000,
+          mockMode: false
+        }
+      })
+      .expect(201);
+
+    expect(created.body.rule).toMatchObject({
+      name: "Test Rule",
+      enabled: true,
+      match: {
+        method: "GET",
+        pathMatch: "/v1/me",
+        pathMatchType: "prefix"
+      },
+      actions: {
+        delayMs: 1000,
+        mockMode: false
+      }
+    });
+
+    const list = await request(app).get("/api/rules").expect(200);
+    expect(list.body.rules).toHaveLength(1);
+
+    const updated = await request(app)
+      .patch(`/api/rules/${created.body.rule.id}`)
+      .send({ name: "Updated Rule", enabled: false })
+      .expect(200);
+
+    expect(updated.body.rule.name).toBe("Updated Rule");
+    expect(updated.body.rule.enabled).toBe(false);
+
+    await request(app).delete(`/api/rules/${created.body.rule.id}`).expect(200);
+
+    const emptyAgain = await request(app).get("/api/rules").expect(200);
+    expect(emptyAgain.body.rules).toHaveLength(0);
+  });
+
+  it("returns 404 when updating or deleting non-existent rule", async () => {
+    const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
+    const app = createApp({
+      store,
+      ruleStore,
+      lanAddresses: [],
+      dashboardPort: 5177
+    });
+
+    await request(app).patch("/api/rules/nonexistent").send({ name: "No" }).expect(404);
+    await request(app).delete("/api/rules/nonexistent").expect(404);
+  });
+
+  it("applies delay rule to relay requests", async () => {
+    const upstream = http.createServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ ok: true }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
+      ruleStore.create({
+        name: "Delay Rule",
+        enabled: true,
+        match: {
+          method: "GET",
+          pathMatch: "/v1/me",
+          pathMatchType: "prefix"
+        },
+        actions: {
+          delayMs: 500,
+          mockMode: false
+        }
+      });
+
+      const app = createApp({
+        store,
+        ruleStore,
+        lanAddresses: [],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
+      });
+
+      const start = Date.now();
+      await request(app).get("/relay/rela/v1/me").expect(200);
+      const elapsed = Date.now() - start;
+
+      expect(elapsed).toBeGreaterThanOrEqual(490);
+
+      const [flow] = store.listFlows({});
+      expect(flow.appliedRule).toMatchObject({
+        ruleName: "Delay Rule",
+        delayed: true,
+        delayMs: 500,
+        rewritten: false,
+        mocked: false
+      });
+    } finally {
+      await closeServer(upstream);
+    }
+  }, 10000);
+
+  it("applies mock mode rule without calling upstream", async () => {
+    let upstreamCalled = false;
+    const upstream = http.createServer((_request, _response) => {
+      upstreamCalled = true;
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
+      ruleStore.create({
+        name: "Mock Rule",
+        enabled: true,
+        match: {
+          pathMatch: "/v1/mock",
+          pathMatchType: "prefix"
+        },
+        actions: {
+          delayMs: 0,
+          mockMode: true,
+          mockStatusCode: 201,
+          mockBody: JSON.stringify({ mocked: true })
+        }
+      });
+
+      const app = createApp({
+        store,
+        ruleStore,
+        lanAddresses: [],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
+      });
+
+      const response = await request(app).get("/relay/rela/v1/mock").expect(201);
+
+      expect(response.body).toEqual({ mocked: true });
+      expect(upstreamCalled).toBe(false);
+
+      const [flow] = store.listFlows({});
+      expect(flow.appliedRule).toMatchObject({
+        ruleName: "Mock Rule",
+        mocked: true
+      });
+      expect(flow.statusCode).toBe(201);
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
+  it("applies response rewrite rule", async () => {
+    const upstream = http.createServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ original: "value", keep: "this" }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
+      ruleStore.create({
+        name: "Rewrite Rule",
+        enabled: true,
+        match: {
+          pathMatch: "/v1/rewrite",
+          pathMatchType: "prefix"
+        },
+        actions: {
+          delayMs: 0,
+          mockMode: false,
+          rewriteStatusCode: 202,
+          rewriteBody: { original: "rewritten", added: "field" }
+        }
+      });
+
+      const app = createApp({
+        store,
+        ruleStore,
+        lanAddresses: [],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
+      });
+
+      const response = await request(app).get("/relay/rela/v1/rewrite").expect(202);
+
+      expect(response.body).toEqual({ original: "rewritten", keep: "this", added: "field" });
+
+      const [flow] = store.listFlows({});
+      expect(flow.appliedRule).toMatchObject({
+        ruleName: "Rewrite Rule",
+        rewritten: true
+      });
+      expect(flow.statusCode).toBe(202);
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
+  it("does not apply disabled rules", async () => {
+    const upstream = http.createServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ ok: true }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
+      ruleStore.create({
+        name: "Disabled Rule",
+        enabled: false,
+        match: {
+          pathMatchType: "prefix"
+        },
+        actions: {
+          delayMs: 1000,
+          mockMode: false
+        }
+      });
+
+      const app = createApp({
+        store,
+        ruleStore,
+        lanAddresses: [],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`
+      });
+
+      await request(app).get("/relay/rela/v1/any").expect(200);
+
+      const [flow] = store.listFlows({});
+      expect(flow.appliedRule).toBeUndefined();
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+});

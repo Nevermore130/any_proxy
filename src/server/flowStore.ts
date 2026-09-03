@@ -74,7 +74,8 @@ export class FlowStore {
         existing?.responseBodyPreview
       ),
       error: event.flow.error ?? existing?.error,
-      isTlsIntercepted: event.flow.isTlsIntercepted
+      isTlsIntercepted: event.flow.isTlsIntercepted,
+      appliedRule: event.flow.appliedRule ?? existing?.appliedRule
     };
 
     if (!existing) {

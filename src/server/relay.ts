@@ -1,8 +1,9 @@
 import type { Request, RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
 import { FlowStore } from "./flowStore.js";
+import { RuleStore } from "./ruleStore.js";
 import { captureSessionHeaderName, captureSessionIdFromHeader } from "./session.js";
-import type { CapturedFlow, HeaderPair, RawBodyEncoding, RawCapturedFlow } from "./types.js";
+import type { CapturedFlow, HeaderPair, RawBodyEncoding, RawCapturedFlow, RequestRule } from "./types.js";
 
 export type RelayOptions = {
   broadcastFlow: (flow: CapturedFlow) => void;
@@ -10,6 +11,7 @@ export type RelayOptions = {
   hostOriginOverrides?: Record<string, string>;
   prefix: string;
   store: FlowStore;
+  ruleStore?: RuleStore;
   targetOrigin: string;
 };
 
@@ -67,18 +69,50 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
     const targetUrl = createTargetUrl(request, options.prefix, requestTargetOrigin);
     const requestBody = requestBodyBuffer(request);
     const requestHeaders = headerPairs(request.headers);
+
     const target = new URL(targetUrl);
     const captureSessionId = captureSessionIdFromHeader(request);
 
+    const originalHost = originalRequestHostname(request);
+    const matchedRule = options.ruleStore?.findMatchingRule(
+      request.method,
+      target.pathname + target.search,
+      originalHost
+    );
+
     try {
-      const upstreamResponse = await fetch(targetUrl, {
-        method: request.method,
-        headers: upstreamRequestHeaders(request),
-        body: methodAllowsBody(request.method) ? new Uint8Array(requestBody) : undefined,
-        redirect: "manual"
-      });
-      const responseBody = Buffer.from(await upstreamResponse.arrayBuffer());
-      const responseHeaders = responseHeaderPairs(upstreamResponse.headers);
+      let statusCode: number;
+      let responseBody: Buffer;
+      let responseHeaders: HeaderPair[];
+
+      if (matchedRule?.actions.mockMode) {
+        statusCode = matchedRule.actions.mockStatusCode ?? 200;
+        responseBody = Buffer.from(matchedRule.actions.mockBody ?? "");
+        responseHeaders = [["content-type", "application/json; charset=utf-8"]];
+      } else {
+        const upstreamResponse = await fetch(targetUrl, {
+          method: request.method,
+          headers: upstreamRequestHeaders(request),
+          body: methodAllowsBody(request.method) ? new Uint8Array(requestBody) : undefined,
+          redirect: "manual"
+        });
+
+        statusCode = upstreamResponse.status;
+        responseBody = Buffer.from(await upstreamResponse.arrayBuffer());
+        responseHeaders = responseHeaderPairs(upstreamResponse.headers);
+
+        if (matchedRule?.actions.rewriteStatusCode !== undefined) {
+          statusCode = matchedRule.actions.rewriteStatusCode;
+        }
+
+        if (matchedRule?.actions.rewriteBody) {
+          responseBody = applyBodyRewrite(responseBody, matchedRule.actions.rewriteBody);
+        }
+      }
+
+      if (matchedRule?.actions.delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, matchedRule.actions.delayMs));
+      }
 
       for (const [name, value] of responseHeaders) {
         if (!RESPONSE_HEADERS_TO_DROP.has(name.toLowerCase())) {
@@ -86,18 +120,20 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
         }
       }
 
-      response.status(upstreamResponse.status).send(responseBody);
+      response.status(statusCode).send(responseBody);
+
       recordRelayFlow(options, {
         captureSessionId,
         clientIp: clientIp(request),
         durationMs: Date.now() - startedAt,
+        matchedRule,
         method: request.method,
         requestBody,
         requestHeaders,
         responseBody,
         responseHeaders,
         startedAtEpochMs: startedAt,
-        statusCode: upstreamResponse.status,
+        statusCode,
         target
       });
     } catch (error) {
@@ -110,6 +146,7 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
         clientIp: clientIp(request),
         durationMs: Date.now() - startedAt,
         error: `Relay request failed: ${message}`,
+        matchedRule,
         method: request.method,
         requestBody,
         requestHeaders,
@@ -252,6 +289,17 @@ function headerPairs(headers: Request["headers"]): HeaderPair[] {
   });
 }
 
+function applyBodyRewrite(body: Buffer, rewriteBody: Record<string, unknown>): Buffer {
+  try {
+    const bodyStr = body.toString("utf8");
+    const parsed = JSON.parse(bodyStr);
+    const merged = { ...parsed, ...rewriteBody };
+    return Buffer.from(JSON.stringify(merged));
+  } catch {
+    return body;
+  }
+}
+
 function recordRelayFlow(
   options: RelayOptions,
   details: {
@@ -259,6 +307,7 @@ function recordRelayFlow(
     clientIp: string;
     durationMs: number;
     error?: string;
+    matchedRule?: RequestRule;
     method: string;
     requestBody: Buffer;
     requestHeaders: HeaderPair[];
@@ -271,6 +320,18 @@ function recordRelayFlow(
 ): void {
   const requestPayload = bodyPayload(details.requestBody, contentType(details.requestHeaders));
   const responsePayload = bodyPayload(details.responseBody, contentType(details.responseHeaders));
+  
+  const appliedRule = details.matchedRule
+    ? {
+        ruleId: details.matchedRule.id,
+        ruleName: details.matchedRule.name,
+        delayed: (details.matchedRule.actions.delayMs ?? 0) > 0,
+        delayMs: details.matchedRule.actions.delayMs ?? 0,
+        rewritten: Boolean(details.matchedRule.actions.rewriteBody || details.matchedRule.actions.rewriteStatusCode),
+        mocked: details.matchedRule.actions.mockMode
+      }
+    : undefined;
+
   const flow: RawCapturedFlow = {
     id: `relay-${randomUUID()}`,
     captureSessionId: details.captureSessionId,
@@ -293,7 +354,8 @@ function recordRelayFlow(
     requestContentType: contentType(details.requestHeaders),
     responseContentType: contentType(details.responseHeaders),
     error: details.error,
-    isTlsIntercepted: false
+    isTlsIntercepted: false,
+    appliedRule
   };
 
   const captured = options.store.ingest({ eventType: details.error ? "error" : "response", flow });

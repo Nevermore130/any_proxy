@@ -36,6 +36,14 @@ export type RawCapturedFlow = {
   responseContentType?: string;
   error?: string;
   isTlsIntercepted: boolean;
+  appliedRule?: {
+    ruleId: string;
+    ruleName: string;
+    delayed: boolean;
+    delayMs: number;
+    rewritten: boolean;
+    mocked: boolean;
+  };
 };
 
 export type CaptureFlowEvent = {
@@ -62,6 +70,14 @@ export type CapturedFlow = {
   responseBodyPreview: BodyPreview;
   error?: string;
   isTlsIntercepted: boolean;
+  appliedRule?: {
+    ruleId: string;
+    ruleName: string;
+    delayed: boolean;
+    delayMs: number;
+    rewritten: boolean;
+    mocked: boolean;
+  };
 };
 
 export type FlowFilters = {
@@ -75,4 +91,42 @@ export type FlowStoreOptions = {
   maxFlows: number;
   bodyPreviewBytes: number;
   flowTtlMs?: number;
+};
+
+export type RequestRule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match: {
+    method?: string;
+    pathMatch?: string;
+    pathMatchType: "prefix" | "glob";
+    originalHost?: string;
+  };
+  actions: {
+    delayMs: number;
+    mockMode: boolean;
+    mockStatusCode?: number;
+    mockBody?: string;
+    rewriteStatusCode?: number;
+    rewriteBody?: Record<string, unknown>;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RuleMatchResult = {
+  matched: boolean;
+  rule?: RequestRule;
+};
+
+export type RuleApplicationResult = {
+  appliedRules: Array<{
+    ruleId: string;
+    ruleName: string;
+    delayed: boolean;
+    delayMs: number;
+    rewritten: boolean;
+    mocked: boolean;
+  }>;
 };

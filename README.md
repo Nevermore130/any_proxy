@@ -179,6 +179,70 @@ RELA_CAPTURE_FLOW_TTL_SECONDS=600
 
 `RELA_CAPTURE_FLOW_TTL_SECONDS=600` keeps captured requests for 10 minutes. Expired flows are removed automatically, and `RELA_CAPTURE_MAX_FLOWS` still caps the total retained request count.
 
+## Request Rules
+
+Rela Capture supports configurable request rules that can delay responses, modify return data, or mock responses without calling the upstream API. Rules are managed through the dashboard UI.
+
+### Creating Rules
+
+1. Click the **Rules** button in the dashboard toolbar
+2. Click **New Rule** to create a rule
+3. Configure the rule:
+   - **Name**: A descriptive name for the rule
+   - **Match conditions**:
+     - HTTP Method (or ANY to match all methods)
+     - Path pattern (prefix or glob match)
+     - Original host (optional, for multi-host setups)
+   - **Actions**:
+     - **Delay**: Wait N milliseconds before returning the response
+     - **Mock Mode**: Return a configured response without calling upstream
+       - Mock Status Code
+       - Mock Body (JSON)
+     - **Response Rewrite** (when not in mock mode):
+       - Rewrite Status Code (optional)
+       - Rewrite Body (JSON merge, optional)
+
+### Rule Matching
+
+Rules are evaluated in order (first matching enabled rule wins):
+1. Only enabled rules are considered
+2. The first rule that matches the request method, path, and host is applied
+3. If no rule matches, the request is forwarded normally
+
+### Rule Actions
+
+**Delay**: Adds a configurable delay before returning the response. Useful for testing slow network conditions or timeouts.
+
+**Mock Mode**: Returns a configured response without calling the upstream API. The mock status code and body are returned immediately (plus any configured delay). This is useful for testing error conditions or stubbing APIs during development.
+
+**Response Rewrite**: After calling the upstream API, the response can be modified:
+- **Status Code Rewrite**: Change the HTTP status code
+- **Body Rewrite**: Merge JSON fields into the response body (shallow merge)
+
+### Example Rules
+
+**Delay a specific endpoint by 2 seconds:**
+- Method: `GET`
+- Path: `/v1/me`
+- Delay: `2000` ms
+
+**Mock an error response:**
+- Method: `POST`
+- Path: `/v1/orders`
+- Mock Mode: Enabled
+- Mock Status Code: `500`
+- Mock Body: `{"error": "Internal server error"}`
+
+**Patch response data:**
+- Method: `GET`
+- Path: `/v1/profile`
+- Rewrite Status Code: (leave empty to keep original)
+- Rewrite Body: `{"isPremium": true, "credits": 9999}`
+
+### Rule Persistence
+
+Rules are persisted to disk in `data/rules.json` and survive service restarts.
+
 Useful API endpoints:
 
 - `GET /api/status`
@@ -189,4 +253,8 @@ Useful API endpoints:
 - `POST /api/capture/resume`
 - `POST /api/flows/clear`
 - `GET /api/export`
+- `GET /api/rules`
+- `POST /api/rules`
+- `PATCH /api/rules/:id`
+- `DELETE /api/rules/:id`
 - `ANY /relay/rela/*`

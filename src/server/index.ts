@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createCaptureApp, publicHttpOrigin } from "./app.js";
 import { loadConfig, type RuntimeConfig } from "./config.js";
 import { FlowStore } from "./flowStore.js";
+import { RuleStore } from "./ruleStore.js";
 import { getLanAddresses, type LanAddress } from "./lan.js";
 
 type Logger = Pick<Console, "error" | "log">;
@@ -18,6 +19,7 @@ export type StartRelaCaptureOptions = {
   setExitCode?: (code: number) => void;
   shutdownTimeoutMs?: number;
   store?: FlowStore;
+  ruleStore?: RuleStore;
 };
 
 export type RelaCaptureRuntime = {
@@ -26,6 +28,7 @@ export type RelaCaptureRuntime = {
   closeEvents: () => void;
   server: Server;
   store: FlowStore;
+  ruleStore: RuleStore;
 };
 
 export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCaptureRuntime {
@@ -43,6 +46,11 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
       bodyPreviewBytes: config.bodyPreviewBytes,
       flowTtlMs: config.flowTtlMs
     });
+  const ruleStore =
+    options.ruleStore ??
+    new RuleStore({
+      persistPath: path.join(process.cwd(), "data", "rules.json")
+    });
   const lanAddresses = options.lanAddresses ?? getLanAddresses();
   const createServer = options.createServer ?? ((app: Express) => http.createServer(app));
   const registerSignals = options.registerSignals ?? true;
@@ -53,6 +61,7 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
 
   const captureApp = createCaptureApp({
     store,
+    ruleStore,
     lanAddresses,
     advertiseHost: config.advertiseHost,
     dashboardHost: config.dashboardHost,
@@ -140,7 +149,8 @@ export function startRelaCapture(options: StartRelaCaptureOptions = {}): RelaCap
     close,
     closeEvents: captureApp.closeEvents,
     server,
-    store
+    store,
+    ruleStore
   };
 }
 

@@ -6,11 +6,13 @@ import QRCode from "qrcode";
 import { FlowStore } from "./flowStore.js";
 import type { LanAddress } from "./lan.js";
 import { createRelayHandler, relayAllowedTargetHosts } from "./relay.js";
+import { RuleStore } from "./ruleStore.js";
 import { captureSessionQrPayload, ensureCaptureSession } from "./session.js";
-import type { CapturedFlow, FlowFilters } from "./types.js";
+import type { CapturedFlow, FlowFilters, RequestRule } from "./types.js";
 
 export type CreateAppOptions = {
   store: FlowStore;
+  ruleStore: RuleStore;
   lanAddresses: LanAddress[];
   advertiseHost?: string;
   dashboardHost?: string;
@@ -173,6 +175,7 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
       hostOriginOverrides: options.relayHostOverrides,
       prefix: "/relay/rela",
       store: options.store,
+      ruleStore: options.ruleStore,
       targetOrigin: relayTargetOrigin
     })
   );
@@ -274,6 +277,59 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     request.on("close", () => {
       eventHub.remove(response);
     });
+  });
+
+  app.get("/api/rules", (_request, response) => {
+    response.json({ rules: options.ruleStore.list() });
+  });
+
+  app.post("/api/rules", (request, response) => {
+    const input = request.body as Partial<RequestRule>;
+    if (!input.name || !input.match || !input.actions) {
+      response.status(400).json({ error: "Invalid rule: name, match, and actions are required" });
+      return;
+    }
+
+    const rule = options.ruleStore.create({
+      name: input.name,
+      enabled: input.enabled ?? true,
+      match: {
+        method: input.match.method,
+        pathMatch: input.match.pathMatch,
+        pathMatchType: input.match.pathMatchType ?? "prefix",
+        originalHost: input.match.originalHost
+      },
+      actions: {
+        delayMs: input.actions.delayMs ?? 0,
+        mockMode: input.actions.mockMode ?? false,
+        mockStatusCode: input.actions.mockStatusCode,
+        mockBody: input.actions.mockBody,
+        rewriteStatusCode: input.actions.rewriteStatusCode,
+        rewriteBody: input.actions.rewriteBody
+      }
+    });
+
+    response.status(201).json({ rule });
+  });
+
+  app.patch("/api/rules/:id", (request, response) => {
+    const updated = options.ruleStore.update(request.params.id, request.body);
+    if (!updated) {
+      response.status(404).json({ error: "Rule not found" });
+      return;
+    }
+
+    response.json({ rule: updated });
+  });
+
+  app.delete("/api/rules/:id", (request, response) => {
+    const deleted = options.ruleStore.delete(request.params.id);
+    if (!deleted) {
+      response.status(404).json({ error: "Rule not found" });
+      return;
+    }
+
+    response.json({ deleted: true });
   });
 
   return app;

@@ -1,13 +1,17 @@
 import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
 import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
+import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
 import { GlobeSimpleIcon } from "@phosphor-icons/react/dist/csr/GlobeSimple";
 import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
+import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -21,7 +25,7 @@ import { bodyCopyButtonState, bodyCopyText } from "./lib/bodyActions.js";
 import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
-import type { BodyPreview, CapturedFlow, FlowFilters, StatusResponse } from "./types.js";
+import type { BodyPreview, CapturedFlow, FlowFilters, RequestRule, StatusResponse } from "./types.js";
 
 type FlowsResponse = {
   flows?: CapturedFlow[];
@@ -61,6 +65,9 @@ export function App() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [theme, setTheme] = useState<DashboardTheme>(() => readStoredTheme());
   const [categoryNotice, setCategoryNotice] = useState("");
+  const [rules, setRules] = useState<RequestRule[]>([]);
+  const [showRulesPanel, setShowRulesPanel] = useState(false);
+  const [editingRule, setEditingRule] = useState<RequestRule | null>(null);
   const [banner, setBanner] = useState<BannerState>({
     eventsError: null,
     flowsError: null,
@@ -104,6 +111,15 @@ export function App() {
         ...current,
         statusError: `Status unavailable: ${errorMessage(error)}`
       }));
+    }
+  }
+
+  async function loadRules() {
+    try {
+      const data = await fetchJson<{ rules: RequestRule[] }>("/api/rules");
+      setRules(data.rules || []);
+    } catch (error) {
+      console.error("Failed to load rules:", error);
     }
   }
 
@@ -207,6 +223,7 @@ export function App() {
 
   useEffect(() => {
     void loadStatus();
+    void loadRules();
     const timer = window.setInterval(() => {
       void loadStatus();
     }, 3000);
@@ -322,6 +339,14 @@ export function App() {
           <button
             className="tool-button"
             type="button"
+            onClick={() => setShowRulesPanel(!showRulesPanel)}
+          >
+            <GearIcon size={15} weight="bold" />
+            Rules {rules.filter((r) => r.enabled).length > 0 && `(${rules.filter((r) => r.enabled).length})`}
+          </button>
+          <button
+            className="tool-button"
+            type="button"
             disabled={actionInFlight}
             onClick={() => void togglePause()}
           >
@@ -404,6 +429,19 @@ export function App() {
         {apiBanner}
       </section>
 
+      {showRulesPanel && (
+        <RulesPanel
+          rules={rules}
+          onClose={() => {
+            setShowRulesPanel(false);
+            setEditingRule(null);
+          }}
+          onRuleChange={() => void loadRules()}
+          editingRule={editingRule}
+          onEditRule={setEditingRule}
+        />
+      )}
+
       <section className="filters" aria-label="Request filters">
         <label>
           <span>Device IP</span>
@@ -462,7 +500,24 @@ export function App() {
           error={banner.flowsError}
           onSelect={(id) => void showDetails(id)}
         />
-        <RequestDetail flow={selectedFlow} loadingId={detailLoadingId} />
+        <RequestDetail flow={selectedFlow} loadingId={detailLoadingId} onCreateRule={(flow) => {
+          const newRule: Partial<RequestRule> = {
+            name: `Rule for ${flow.method} ${flow.path}`,
+            enabled: true,
+            match: {
+              method: flow.method,
+              pathMatch: flow.path,
+              pathMatchType: "prefix",
+              originalHost: flow.host
+            },
+            actions: {
+              delayMs: 0,
+              mockMode: false
+            }
+          };
+          setEditingRule(newRule as RequestRule);
+          setShowRulesPanel(true);
+        }} />
       </section>
     </main>
   );
@@ -610,7 +665,7 @@ function RequestRow({
   );
 }
 
-function RequestDetail({ flow, loadingId }: { flow: CapturedFlow | null; loadingId: string | null }) {
+function RequestDetail({ flow, loadingId, onCreateRule }: { flow: CapturedFlow | null; loadingId: string | null; onCreateRule?: (flow: CapturedFlow) => void }) {
   if (loadingId) {
     return (
       <aside className="details" aria-live="polite">
@@ -646,9 +701,30 @@ function RequestDetail({ flow, loadingId }: { flow: CapturedFlow | null; loading
         <h2 className="details-title">
           {flow.method || "UNKNOWN"} {flow.host || ""}
         </h2>
-        <CurlCopyButton flow={flow} />
+        <div style={{ display: "flex", gap: "8px" }}>
+          {onCreateRule && (
+            <button
+              className="curl-copy-button"
+              title="Create rule from this request"
+              type="button"
+              onClick={() => onCreateRule(flow)}
+            >
+              <PlusIcon size={12} weight="bold" />
+              New Rule
+            </button>
+          )}
+          <CurlCopyButton flow={flow} />
+        </div>
       </div>
       <p className="muted breakable request-url">{flowRequestUrl(flow)}</p>
+      {flow.appliedRule && (
+        <div className="applied-rule-badge">
+          Rule applied: <strong>{flow.appliedRule.ruleName}</strong>
+          {flow.appliedRule.delayed && ` • Delayed ${flow.appliedRule.delayMs}ms`}
+          {flow.appliedRule.rewritten && " • Rewritten"}
+          {flow.appliedRule.mocked && " • Mocked"}
+        </div>
+      )}
       <DetailTabs flow={flow} />
     </aside>
   );
@@ -1256,4 +1332,344 @@ function jsonPrimitiveClass(value: unknown): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function RulesPanel({
+  rules,
+  onClose,
+  onRuleChange,
+  editingRule,
+  onEditRule
+}: {
+  rules: RequestRule[];
+  onClose: () => void;
+  onRuleChange: () => void;
+  editingRule: RequestRule | null;
+  onEditRule: (rule: RequestRule | null) => void;
+}) {
+  async function toggleRule(rule: RequestRule) {
+    try {
+      await fetchJson(`/api/rules/${encodeURIComponent(rule.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: !rule.enabled })
+      });
+      onRuleChange();
+    } catch (error) {
+      console.error("Failed to toggle rule:", error);
+    }
+  }
+
+  async function deleteRule(id: string) {
+    try {
+      await fetchJson(`/api/rules/${encodeURIComponent(id)}`, { method: "DELETE" });
+      onRuleChange();
+    } catch (error) {
+      console.error("Failed to delete rule:", error);
+    }
+  }
+
+  return (
+    <div className="rules-panel-overlay" onClick={onClose}>
+      <div className="rules-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="rules-panel-header">
+          <h2>Request Rules</h2>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              className="tool-button"
+              type="button"
+              onClick={() =>
+                onEditRule({
+                  id: "",
+                  name: "New Rule",
+                  enabled: true,
+                  match: { pathMatchType: "prefix" },
+                  actions: { delayMs: 0, mockMode: false },
+                  createdAt: "",
+                  updatedAt: ""
+                })
+              }
+            >
+              <PlusIcon size={15} weight="bold" />
+              New Rule
+            </button>
+            <button className="tool-button" type="button" onClick={onClose}>
+              <XIcon size={15} weight="bold" />
+              Close
+            </button>
+          </div>
+        </div>
+
+        {editingRule ? (
+          <RuleEditor
+            rule={editingRule}
+            onSave={() => {
+              onRuleChange();
+              onEditRule(null);
+            }}
+            onCancel={() => onEditRule(null)}
+          />
+        ) : (
+          <div className="rules-list">
+            {rules.length === 0 ? (
+              <p className="muted" style={{ padding: "20px", textAlign: "center" }}>
+                No rules configured. Create a rule to delay or modify relay responses.
+              </p>
+            ) : (
+              rules.map((rule) => (
+                <div key={rule.id} className={`rule-card ${rule.enabled ? "is-enabled" : "is-disabled"}`}>
+                  <div className="rule-card-header">
+                    <strong>{rule.name}</strong>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        className="icon-button"
+                        title={rule.enabled ? "Disable rule" : "Enable rule"}
+                        type="button"
+                        onClick={() => void toggleRule(rule)}
+                      >
+                        {rule.enabled ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
+                      </button>
+                      <button
+                        className="icon-button"
+                        title="Edit rule"
+                        type="button"
+                        onClick={() => onEditRule(rule)}
+                      >
+                        <PencilSimpleIcon size={14} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        title="Delete rule"
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Delete rule "${rule.name}"?`)) {
+                            void deleteRule(rule.id);
+                          }
+                        }}
+                      >
+                        <TrashIcon size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="rule-card-details">
+                    <div>
+                      <span className="label">Match:</span>{" "}
+                      {rule.match.method || "ANY"} {rule.match.pathMatch || "*"}
+                      {rule.match.originalHost && ` @ ${rule.match.originalHost}`}
+                    </div>
+                    <div>
+                      <span className="label">Actions:</span>{" "}
+                      {rule.actions.delayMs > 0 && `Delay ${rule.actions.delayMs}ms`}
+                      {rule.actions.rewriteStatusCode && ` • Status ${rule.actions.rewriteStatusCode}`}
+                      {rule.actions.rewriteBody && " • Rewrite body"}
+                      {rule.actions.mockMode && " • Mock mode"}
+                      {!rule.actions.delayMs &&
+                        !rule.actions.rewriteStatusCode &&
+                        !rule.actions.rewriteBody &&
+                        !rule.actions.mockMode &&
+                        "None"}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RuleEditor({
+  rule,
+  onSave,
+  onCancel
+}: {
+  rule: RequestRule;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(rule.name);
+  const [method, setMethod] = useState(rule.match.method || "");
+  const [pathMatch, setPathMatch] = useState(rule.match.pathMatch || "");
+  const [pathMatchType, setPathMatchType] = useState(rule.match.pathMatchType);
+  const [originalHost, setOriginalHost] = useState(rule.match.originalHost || "");
+  const [delayMs, setDelayMs] = useState(String(rule.actions.delayMs));
+  const [mockMode, setMockMode] = useState(rule.actions.mockMode);
+  const [mockStatusCode, setMockStatusCode] = useState(String(rule.actions.mockStatusCode || ""));
+  const [mockBody, setMockBody] = useState(rule.actions.mockBody || "");
+  const [rewriteStatusCode, setRewriteStatusCode] = useState(
+    String(rule.actions.rewriteStatusCode || "")
+  );
+  const [rewriteBodyJson, setRewriteBodyJson] = useState(
+    rule.actions.rewriteBody ? JSON.stringify(rule.actions.rewriteBody, null, 2) : ""
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const ruleData: Partial<RequestRule> = {
+        name,
+        enabled: rule.enabled,
+        match: {
+          method: method || undefined,
+          pathMatch: pathMatch || undefined,
+          pathMatchType,
+          originalHost: originalHost || undefined
+        },
+        actions: {
+          delayMs: Number(delayMs) || 0,
+          mockMode,
+          mockStatusCode: mockMode && mockStatusCode ? Number(mockStatusCode) : undefined,
+          mockBody: mockMode ? mockBody : undefined,
+          rewriteStatusCode: !mockMode && rewriteStatusCode ? Number(rewriteStatusCode) : undefined,
+          rewriteBody:
+            !mockMode && rewriteBodyJson
+              ? (JSON.parse(rewriteBodyJson) as Record<string, unknown>)
+              : undefined
+        }
+      };
+
+      if (rule.id) {
+        await fetchJson(`/api/rules/${encodeURIComponent(rule.id)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(ruleData)
+        });
+      } else {
+        await fetchJson("/api/rules", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(ruleData)
+        });
+      }
+
+      onSave();
+    } catch (error) {
+      console.error("Failed to save rule:", error);
+      alert(`Failed to save rule: ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rule-editor">
+      <div className="rule-editor-section">
+        <h3>Rule Details</h3>
+        <label>
+          <span>Rule Name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Rule" />
+        </label>
+      </div>
+
+      <div className="rule-editor-section">
+        <h3>Match Conditions</h3>
+        <label>
+          <span>HTTP Method</span>
+          <select value={method} onChange={(e) => setMethod(e.target.value)}>
+            <option value="">ANY</option>
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </label>
+        <label>
+          <span>Path Match Type</span>
+          <select value={pathMatchType} onChange={(e) => setPathMatchType(e.target.value as "prefix" | "glob")}>
+            <option value="prefix">Prefix</option>
+            <option value="glob">Glob</option>
+          </select>
+        </label>
+        <label>
+          <span>Path Pattern</span>
+          <input
+            value={pathMatch}
+            onChange={(e) => setPathMatch(e.target.value)}
+            placeholder="/v1/me"
+          />
+        </label>
+        <label>
+          <span>Original Host (optional)</span>
+          <input
+            value={originalHost}
+            onChange={(e) => setOriginalHost(e.target.value)}
+            placeholder="api.rela.me"
+          />
+        </label>
+      </div>
+
+      <div className="rule-editor-section">
+        <h3>Actions</h3>
+        <label>
+          <span>Delay (ms)</span>
+          <input
+            type="number"
+            value={delayMs}
+            onChange={(e) => setDelayMs(e.target.value)}
+            placeholder="0"
+          />
+        </label>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: "8px" }}>
+          <input type="checkbox" checked={mockMode} onChange={(e) => setMockMode(e.target.checked)} />
+          <span>Mock Mode (skip upstream)</span>
+        </label>
+        {mockMode ? (
+          <>
+            <label>
+              <span>Mock Status Code</span>
+              <input
+                type="number"
+                value={mockStatusCode}
+                onChange={(e) => setMockStatusCode(e.target.value)}
+                placeholder="200"
+              />
+            </label>
+            <label>
+              <span>Mock Body</span>
+              <textarea
+                value={mockBody}
+                onChange={(e) => setMockBody(e.target.value)}
+                placeholder='{"message": "mocked"}'
+                rows={4}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              <span>Rewrite Status Code (optional)</span>
+              <input
+                type="number"
+                value={rewriteStatusCode}
+                onChange={(e) => setRewriteStatusCode(e.target.value)}
+                placeholder="Original status"
+              />
+            </label>
+            <label>
+              <span>Rewrite Body JSON (merge, optional)</span>
+              <textarea
+                value={rewriteBodyJson}
+                onChange={(e) => setRewriteBodyJson(e.target.value)}
+                placeholder='{"field": "value"}'
+                rows={4}
+              />
+            </label>
+          </>
+        )}
+      </div>
+
+      <div className="rule-editor-actions">
+        <button className="button button--primary" type="button" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? "Saving..." : rule.id ? "Update Rule" : "Create Rule"}
+        </button>
+        <button className="button" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
