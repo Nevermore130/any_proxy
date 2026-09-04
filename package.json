@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build:server && npm run build:client",
+    "build": "npm run build:server && npm run build:client && npm run build:copy-assets",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.build.json",
+    "build:copy-assets": "cp src/client/whats-new.json dist/whats-new.json",
     "dev": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
     "start:prod": "node dist/server/index.js",

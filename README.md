@@ -249,7 +249,7 @@ Rela Capture includes a "What's New" update notification system that shows users
 
 ### Adding Release Notes for a New Version
 
-1. Edit `src/client/whats-new.json`
+1. Edit `src/client/whats-new.json` (this file is automatically copied to `dist/` during build)
 2. Add a new entry to the array with the following structure:
 
 ```json
