@@ -1,31 +1,12 @@
-import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
-import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
-import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
-import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
-import { GlobeSimpleIcon } from "@phosphor-icons/react/dist/csr/GlobeSimple";
-import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
-import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
-import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
-import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
-import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
-import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
-import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
-import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
-import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from "react";
-import { bodyCopyButtonState, bodyCopyText } from "./lib/bodyActions.js";
-import { JsonBodyEditor } from "./components/JsonBodyEditor.js";
-import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
-import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
-import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AppShell } from "./components/AppShell.js";
+import { TopBar } from "./components/TopBar.js";
+import { Sidebar } from "./components/Sidebar.js";
+import { RequestPane } from "./components/RequestPane.js";
+import { ResponsePane } from "./components/ResponsePane.js";
+import { FeatureTour } from "./components/FeatureTour.js";
+import { UpdateModal } from "./components/UpdateModal.js";
+import { RulesPanel } from "./components/RulesPanel.js";
 import {
   findUnreadEntry,
   isTourCompleted,
@@ -33,7 +14,6 @@ import {
   setLastSeenVersion
 } from "./lib/whatsNewHelpers.js";
 import type {
-  BodyPreview,
   CapturedFlow,
   FlowFilters,
   RequestRule,
@@ -41,8 +21,6 @@ import type {
   WhatsNewEntry,
   WhatsNewResponse
 } from "./types.js";
-import { FeatureTour } from "./components/FeatureTour.js";
-import { UpdateModal } from "./components/UpdateModal.js";
 
 type FlowsResponse = {
   flows?: CapturedFlow[];
@@ -58,18 +36,6 @@ type BannerState = {
   eventsError: string | null;
 };
 
-type DashboardTheme = "light" | "dark";
-type BodyViewMode = "formatted" | "raw";
-
-const themeStorageKey = "rela-capture-theme";
-
-const defaultFilters: FlowFilters = {
-  deviceIp: "",
-  path: "",
-  protocol: "all",
-  statusClass: "all"
-};
-
 export function App() {
   const [flows, setFlows] = useState<CapturedFlow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -78,10 +44,7 @@ export function App() {
   const [paused, setPaused] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
   const [flowsLoading, setFlowsLoading] = useState(false);
-  const [filters, setFilters] = useState<FlowFilters>(defaultFilters);
   const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [theme, setTheme] = useState<DashboardTheme>(() => readStoredTheme());
-  const [categoryNotice, setCategoryNotice] = useState("");
   const [rules, setRules] = useState<RequestRule[]>([]);
   const [showRulesPanel, setShowRulesPanel] = useState(false);
   const [editingRule, setEditingRule] = useState<RequestRule | null>(null);
@@ -94,27 +57,14 @@ export function App() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
 
-  const filtersRef = useRef(filters);
   const selectedIdRef = useRef(selectedId);
   const latestFlowsRequestId = useRef(0);
-
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
-  useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    writeStoredTheme(theme);
-  }, [theme]);
-
-  const exportUrl = useMemo(() => {
-    const query = filtersToParams(filters).toString();
-    return query ? `/api/export?${query}` : "/api/export";
-  }, [filters]);
+  const exportUrl = "/api/export";
 
   const apiBanner = [banner.statusError, banner.flowsError, banner.eventsError]
     .filter(Boolean)
@@ -167,15 +117,13 @@ export function App() {
     }
   }
 
-  async function loadFlows(nextFilters = filtersRef.current) {
+  async function loadFlows() {
     const requestId = ++latestFlowsRequestId.current;
     setFlowsLoading(true);
     setBanner((current) => ({ ...current, flowsError: null }));
 
     try {
-      const params = filtersToParams(nextFilters);
-      const query = params.toString();
-      const data = await fetchJson<FlowsResponse>(query ? `/api/flows?${query}` : "/api/flows");
+      const data = await fetchJson<FlowsResponse>("/api/flows");
       if (requestId !== latestFlowsRequestId.current) {
         return;
       }
@@ -261,13 +209,10 @@ export function App() {
     });
   }
 
-  function updateFilter<K extends keyof FlowFilters>(key: K, value: FlowFilters[K]) {
-    setFilters((current) => ({ ...current, [key]: value }));
-  }
-
   useEffect(() => {
     void loadStatus();
     void loadRules();
+    void loadFlows();
     void checkForUpdates();
     const timer = window.setInterval(() => {
       void loadStatus();
@@ -277,16 +222,6 @@ export function App() {
       window.clearInterval(timer);
     };
   }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadFlows(filters);
-    }, 150);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [filters]);
 
   useEffect(() => {
     const events = new EventSource("/api/events");
@@ -317,7 +252,7 @@ export function App() {
 
         if (payload.type === "flow" && payload.flow) {
           const incomingFlow = payload.flow;
-          setFlows((current) => upsertFlowList(current, incomingFlow, filtersRef.current));
+          setFlows((current) => upsertFlowList(current, incomingFlow));
           setSelectedFlow((current) =>
             selectedIdRef.current === incomingFlow.id ? incomingFlow : current
           );
@@ -334,20 +269,6 @@ export function App() {
       events.close();
     };
   }, []);
-
-  const captureSessionId = status?.session?.id || "";
-  const sessionQrUrl = captureSessionId
-    ? `/api/session/qr.svg?sid=${encodeURIComponent(captureSessionId)}`
-    : "";
-  const errorCount = flows.filter((flow) => flow.error || (flow.statusCode ?? 0) >= 400).length;
-  const lastFlowTime = flows[0] ? formatTime(flows[0].startedAt) : "-";
-  const statusLine = banner.statusError
-    ? "Dashboard API unavailable"
-    : paused
-      ? "Capture paused"
-      : "Capturing relay traffic";
-  const statusState = banner.statusError ? "error" : paused ? "paused" : "running";
-  const nextTheme = theme === "dark" ? "light" : "dark";
 
   const handleDismissUpdate = () => {
     if (unreadEntry) {
@@ -380,933 +301,110 @@ export function App() {
     setUnreadEntry(null);
   };
 
+  const [searchValue, setSearchValue] = useState("");
+
+  const filteredFlows = useMemo(() => {
+    if (!searchValue) {
+      return flows;
+    }
+    const search = searchValue.toLowerCase();
+    return flows.filter(
+      (flow) =>
+        flow.path?.toLowerCase().includes(search) ||
+        flow.method?.toLowerCase().includes(search) ||
+        flow.host?.toLowerCase().includes(search)
+    );
+  }, [flows, searchValue]);
+
+  function handleCreateRule(flow: CapturedFlow) {
+    const newRule: Partial<RequestRule> = {
+      name: `Rule for ${flow.method} ${flow.path}`,
+      enabled: true,
+      match: {
+        method: flow.method,
+        pathMatch: flow.path,
+        pathMatchType: "prefix",
+        originalHost: flow.host
+      },
+      actions: {
+        delayMs: 0,
+        mockMode: false
+      }
+    };
+    setEditingRule(newRule as RequestRule);
+    setShowRulesPanel(true);
+  }
+
   return (
-    <main className="shell" data-theme={theme}>
-      <header className="topbar">
-        <div className="topbar__identity">
-          <div className="product-mark">RC</div>
-          <div>
-            <h1>Rela Capture</h1>
-            <p className="status-line" data-state={statusState}>
-              {statusLine}
-            </p>
-          </div>
-        </div>
-        <div className="topbar__stats" aria-label="Capture summary">
-          <SummaryStat label="Requests" value={flows.length} />
-          <SummaryStat label="Errors" value={errorCount} tone={errorCount > 0 ? "error" : "ok"} />
-          <SummaryStat label="Latest" value={lastFlowTime} />
-        </div>
-        <div className="actions" aria-label="Capture controls">
-          <button
-            aria-label={`Switch to ${nextTheme} mode`}
-            className="tool-button theme-toggle"
-            title={`Switch to ${nextTheme} mode`}
-            type="button"
-            onClick={() => setTheme(nextTheme)}
-          >
-            {theme === "dark" ? (
-              <SunIcon size={15} weight="bold" />
-            ) : (
-              <MoonIcon size={15} weight="bold" />
-            )}
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
-          <button
-            className="tool-button"
-            type="button"
-            data-tour="rules-button"
-            onClick={() => setShowRulesPanel(!showRulesPanel)}
-          >
-            <GearIcon size={15} weight="bold" />
-            Rules {rules.filter((r) => r.enabled).length > 0 && `(${rules.filter((r) => r.enabled).length})`}
-          </button>
-          <button
-            className="tool-button"
-            type="button"
-            disabled={actionInFlight}
-            onClick={() => void togglePause()}
-          >
-            {paused ? <PlayIcon size={15} weight="bold" /> : <PauseIcon size={15} weight="bold" />}
-            {paused ? "Resume" : "Pause"}
-          </button>
-          <button
-            className="tool-button"
-            type="button"
-            disabled={actionInFlight || flowsLoading}
-            onClick={() => void clearFlows()}
-          >
-            <TrashIcon size={15} weight="bold" />
-            Clear
-          </button>
-          <a className="button tool-button button--primary" href={exportUrl}>
-            <DownloadSimpleIcon size={15} weight="bold" />
-            Export
-          </a>
-        </div>
-      </header>
-
-      <section className="setup capture-categories" aria-label="Capture data categories">
-        <div className="category-panel">
-          <div className="category-panel__head">
-            <div>
-              <span className="label">Data categories</span>
-              <strong>Captured traffic</strong>
-            </div>
-            {categoryNotice ? (
-              <span className="category-notice" role="status">
-                {categoryNotice}
-              </span>
-            ) : null}
-          </div>
-          <div className="category-actions" aria-label="Capture category selector">
-            <button
-              className="category-card is-active"
-              type="button"
-              onClick={() => setCategoryNotice("")}
-            >
-              <GlobeSimpleIcon size={18} weight="bold" />
-              <span>
-                <strong>HTTP Requests</strong>
-                <small>{flows.length} captured</small>
-              </span>
-            </button>
-            <button
-              className="category-card is-soon"
-              type="button"
-              onClick={() => setCategoryNotice("IM 消息数据开发中，敬请期待")}
-            >
-              <ChatCircleDotsIcon size={18} weight="bold" />
-              <span>
-                <strong>IM Messages</strong>
-                <small>开发中，敬请期待</small>
-              </span>
-            </button>
-          </div>
-        </div>
-        <div className="setup__qr">
-          {sessionQrUrl ? (
-            <img alt="App capture binding QR code" src={sessionQrUrl} />
-          ) : (
-            <div className="setup__qr-placeholder" aria-hidden="true" />
-          )}
-          <div>
-            <span className="label">Bind App</span>
-            <strong>{captureSessionId ? "Scan QR" : "Loading..."}</strong>
-            {captureSessionId ? (
-              <span className="setup__session" title={captureSessionId}>
-                Session {shortSessionId(captureSessionId)}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      <section className="banner" hidden={!apiBanner} role="status">
-        {apiBanner}
-      </section>
-
-      {showRulesPanel && (
-        <RulesPanel
-          rules={rules}
-          onClose={() => {
-            setShowRulesPanel(false);
-            setEditingRule(null);
-          }}
-          onRuleChange={() => void loadRules()}
-          editingRule={editingRule}
-          onEditRule={setEditingRule}
+    <AppShell
+      topBar={
+        <TopBar
+          status={status}
+          paused={paused}
+          actionInFlight={actionInFlight}
+          rulesCount={rules.filter((r) => r.enabled).length}
+          exportUrl={exportUrl}
+          onTogglePause={() => void togglePause()}
+          onClearFlows={() => void clearFlows()}
+          onShowRules={() => setShowRulesPanel(!showRulesPanel)}
         />
-      )}
-
-      <section className="filters" aria-label="Request filters">
-        <label>
-          <span>Device IP</span>
-          <input
-            value={filters.deviceIp}
-            placeholder="192.168"
-            autoComplete="off"
-            onChange={(event) => updateFilter("deviceIp", event.target.value)}
-          />
-        </label>
-        <label>
-          <span>Path contains</span>
-          <input
-            value={filters.path}
-            placeholder="/v1/me"
-            autoComplete="off"
-            onChange={(event) => updateFilter("path", event.target.value)}
-          />
-        </label>
-        <label>
-          <span>Protocol</span>
-          <select
-            value={filters.protocol}
-            onChange={(event) => updateFilter("protocol", event.target.value)}
-          >
-            <option value="all">All protocols</option>
-            <option value="http">HTTP</option>
-            <option value="https">HTTPS</option>
-            <option value="websocket">WebSocket</option>
-            <option value="unknown">Unknown</option>
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <select
-            value={filters.statusClass}
-            onChange={(event) => updateFilter("statusClass", event.target.value)}
-          >
-            <option value="all">All statuses</option>
-            <option value="1xx">1xx</option>
-            <option value="2xx">2xx</option>
-            <option value="3xx">3xx</option>
-            <option value="4xx">4xx</option>
-            <option value="5xx">5xx</option>
-            <option value="none">No response</option>
-          </select>
-        </label>
-      </section>
-
-      <section className="content">
-        <RequestTable
-          flows={flows}
-          filters={filters}
-          loading={flowsLoading}
+      }
+      sidebar={
+        <Sidebar
+          flows={filteredFlows}
           selectedId={selectedId}
-          error={banner.flowsError}
           onSelect={(id) => void showDetails(id)}
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
         />
-        <RequestDetail flow={selectedFlow} loadingId={detailLoadingId} onCreateRule={(flow) => {
-          const newRule: Partial<RequestRule> = {
-            name: `Rule for ${flow.method} ${flow.path}`,
-            enabled: true,
-            match: {
-              method: flow.method,
-              pathMatch: flow.path,
-              pathMatchType: "prefix",
-              originalHost: flow.host
-            },
-            actions: {
-              delayMs: 0,
-              mockMode: false
-            }
-          };
-          setEditingRule(newRule as RequestRule);
-          setShowRulesPanel(true);
-        }} />
-      </section>
-
-      {showUpdateModal && unreadEntry && (
-        <UpdateModal
-          entry={unreadEntry}
-          onDismiss={handleDismissUpdate}
-          onStartTour={handleStartTour}
-        />
-      )}
-
-      {showTour && unreadEntry?.tour && (
-        <FeatureTour
-          steps={unreadEntry.tour}
-          onComplete={handleCompleteTour}
-          onSkip={handleSkipTour}
-        />
-      )}
-    </main>
-  );
-}
-
-function readStoredTheme(): DashboardTheme {
-  if (typeof window === "undefined") {
-    return "light";
-  }
-
-  try {
-    return window.localStorage.getItem(themeStorageKey) === "dark" ? "dark" : "light";
-  } catch {
-    return "light";
-  }
-}
-
-function writeStoredTheme(theme: DashboardTheme) {
-  try {
-    window.localStorage.setItem(themeStorageKey, theme);
-  } catch {
-    // Theme persistence is a convenience; the toggle still works without storage access.
-  }
-}
-
-function SummaryStat({
-  label,
-  tone,
-  value
-}: {
-  label: string;
-  tone?: "error" | "ok";
-  value: ReactNode;
-}) {
-  return (
-    <div className={`summary-stat${tone ? ` summary-stat--${tone}` : ""}`}>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function RequestTable({
-  error,
-  filters,
-  flows,
-  loading,
-  onSelect,
-  selectedId
-}: {
-  error: string | null;
-  filters: FlowFilters;
-  flows: CapturedFlow[];
-  loading: boolean;
-  onSelect: (id: string) => void;
-  selectedId: string | null;
-}) {
-  const tableState = tableStateText({ error, filters, flows, loading });
-
-  return (
-    <div className="table-pane" aria-live="polite" aria-busy={loading ? "true" : "false"}>
-      <div className="pane-header">
-        <div>
-          <h2>Captured Requests</h2>
-          <p>Live relay traffic from the debug API base URL.</p>
-        </div>
-        <div className="pane-header__meta" aria-label="Table state">
-          <span>{filtersAreActive(filters) ? "Filtered" : "All traffic"}</span>
-          <span>{flows.length} rows</span>
-        </div>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Time</th>
-            <th scope="col">Device</th>
-            <th scope="col">Method</th>
-            <th scope="col">Host</th>
-            <th scope="col">Path</th>
-            <th scope="col">Status</th>
-            <th scope="col">Duration</th>
-            <th scope="col">Protocol</th>
-          </tr>
-        </thead>
-        <tbody>
-          {flows.map((flow) => (
-            <RequestRow
-              flow={flow}
-              key={flow.id}
-              selected={flow.id === selectedId}
-              onSelect={onSelect}
-            />
-          ))}
-        </tbody>
-      </table>
-      <div className="table-state" hidden={!tableState}>
-        {tableState}
-      </div>
-    </div>
-  );
-}
-
-function RequestRow({
-  flow,
-  onSelect,
-  selected
-}: {
-  flow: CapturedFlow;
-  onSelect: (id: string) => void;
-  selected: boolean;
-}) {
-  function handleKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelect(flow.id);
-    }
-  }
-
-  return (
-    <tr
-      className={selected ? "selected" : ""}
-      tabIndex={0}
-      onClick={() => onSelect(flow.id)}
-      onKeyDown={handleKeyDown}
-    >
-      <td className="time">{formatTime(flow.startedAt)}</td>
-      <td className="mono">{flow.clientIp}</td>
-      <td className="method-cell">
-        <span className="method">{flow.method || "UNKNOWN"}</span>
-      </td>
-      <td className="clip">{flow.host}</td>
-      <td className="path">{flow.path}</td>
-      <td className="status-cell">
-        <span className={`status-badge status-badge--${statusClass(flow.statusCode, flow.error)}`}>
-          {flow.statusCode === undefined ? (flow.error ? "ERR" : "...") : String(flow.statusCode)}
-        </span>
-      </td>
-      <td className="mono">{formatDuration(flow.durationMs)}</td>
-      <td className="protocol-cell">
-        <span className={`protocol protocol--${safeToken(flow.protocol)}`}>
-          {flow.protocol || "unknown"}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-function RequestDetail({ flow, loadingId, onCreateRule }: { flow: CapturedFlow | null; loadingId: string | null; onCreateRule?: (flow: CapturedFlow) => void }) {
-  if (loadingId) {
-    return (
-      <aside className="details" aria-live="polite">
-        <h2 className="details-title">Request Detail</h2>
-        <p className="muted detail-loading">Loading {loadingId}...</p>
-      </aside>
-    );
-  }
-
-  if (!flow) {
-    return (
-      <aside className="details" aria-live="polite">
-        <div className="details__empty">
-          <h2 className="details-title">Request Detail</h2>
-          <p>Select a request to inspect headers, body previews, and capture errors.</p>
-        </div>
-      </aside>
-    );
-  }
-
-  if (flow.error && !flow.host) {
-    return (
-      <aside className="details" aria-live="polite">
-        <h2 className="details-title">Request Detail</h2>
-        <p className="error">{flow.error}</p>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="details" aria-live="polite">
-      <div className="details-title-row">
-        <h2 className="details-title">
-          {flow.method || "UNKNOWN"} {flow.host || ""}
-        </h2>
-        <div style={{ display: "flex", gap: "8px" }}>
-          {onCreateRule && (
-            <button
-              className="curl-copy-button"
-              title="Create rule from this request"
-              type="button"
-              data-tour="create-rule-button"
-              onClick={() => onCreateRule(flow)}
-            >
-              <PlusIcon size={12} weight="bold" />
-              New Rule
-            </button>
-          )}
-          <CurlCopyButton flow={flow} />
-        </div>
-      </div>
-      <p className="muted breakable request-url">{flowRequestUrl(flow)}</p>
-      {flow.appliedRule && (
-        <div className="applied-rule-badge">
-          Rule applied: <strong>{flow.appliedRule.ruleName}</strong>
-          {flow.appliedRule.delayed && ` • Delayed ${flow.appliedRule.delayMs}ms`}
-          {flow.appliedRule.rewritten && " • Rewritten"}
-          {flow.appliedRule.mocked && " • Mocked"}
-        </div>
-      )}
-      <DetailTabs flow={flow} />
-    </aside>
-  );
-}
-
-function DetailTabs({ flow }: { flow: CapturedFlow }) {
-  const [activeTab, setActiveTab] = useState<DetailTabId>("request");
-  const tabs = detailTabButtonState(activeTab);
-
-  return (
-    <div className="detail-tab-shell">
-      <div className="detail-tab-list" role="tablist" aria-label="Request detail sections">
-        {tabs.map((tab) => (
-          <button
-            aria-controls={tab.panelId}
-            aria-selected={tab.selected}
-            className="detail-tab"
-            id={tab.tabId}
-            key={tab.id}
-            role="tab"
-            tabIndex={tab.selected ? 0 : -1}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                event.preventDefault();
-                setActiveTab(tab.id === "request" ? "response" : "request");
-              }
+      }
+      requestPane={<RequestPane flow={selectedFlow} onCreateRule={handleCreateRule} />}
+      responsePane={<ResponsePane flow={selectedFlow} />}
+      banner={apiBanner ? <span>{apiBanner}</span> : null}
+      rulesPanel={
+        showRulesPanel ? (
+          <RulesPanel
+            rules={rules}
+            onClose={() => {
+              setShowRulesPanel(false);
+              setEditingRule(null);
             }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <RequestPanel flow={flow} hidden={activeTab !== "request"} />
-      <ResponsePanel flow={flow} hidden={activeTab !== "response"} />
-    </div>
+            onRuleChange={() => void loadRules()}
+            editingRule={editingRule}
+            onEditRule={setEditingRule}
+          />
+        ) : null
+      }
+      updateModal={
+        showUpdateModal && unreadEntry ? (
+          <UpdateModal
+            entry={unreadEntry}
+            onDismiss={handleDismissUpdate}
+            onStartTour={handleStartTour}
+          />
+        ) : null
+      }
+      featureTour={
+        showTour && unreadEntry?.tour ? (
+          <FeatureTour
+            steps={unreadEntry.tour}
+            onComplete={handleCompleteTour}
+            onSkip={handleSkipTour}
+          />
+        ) : null
+      }
+    />
   );
 }
 
-function RequestPanel({ flow, hidden }: { flow: CapturedFlow; hidden: boolean }) {
-  return (
-    <section
-      aria-labelledby="detail-tab-request"
-      className="detail-tab-panel"
-      data-detail-panel="request"
-      hidden={hidden}
-      id="detail-panel-request"
-      role="tabpanel"
-    >
-      <MetaGrid
-        rows={[
-          ["Device", flow.clientIp],
-          ["Started", formatDateTime(flow.startedAt)],
-          ["Method", flow.method || "UNKNOWN"],
-          ["Protocol", flow.protocol]
-        ]}
-      />
-      <DetailHeading>Headers</DetailHeading>
-      <HeadersViewer headers={flow.requestHeaders} label="Request Headers" />
-      <DetailHeading action={<BodyCopyButton body={flow.requestBodyPreview} label="Request Body" />}>
-        Body
-      </DetailHeading>
-      <BodyViewer body={flow.requestBodyPreview} label="Request Body" />
-    </section>
-  );
-}
-
-function ResponsePanel({ flow, hidden }: { flow: CapturedFlow; hidden: boolean }) {
-  return (
-    <section
-      aria-labelledby="detail-tab-response"
-      className="detail-tab-panel"
-      data-detail-panel="response"
-      hidden={hidden}
-      id="detail-panel-response"
-      role="tabpanel"
-    >
-      {flow.error ? <p className="error">{flow.error}</p> : null}
-      <MetaGrid
-        rows={[
-          ["Status", flow.statusCode === undefined ? "No response" : String(flow.statusCode)],
-          ["Duration", formatDuration(flow.durationMs)],
-          ["TLS", flow.isTlsIntercepted ? "intercepted" : "passthrough"],
-          ["Host", hostWithPort(flow)]
-        ]}
-      />
-      <DetailHeading>Headers</DetailHeading>
-      <HeadersViewer headers={flow.responseHeaders} label="Response Headers" />
-      <DetailHeading
-        action={<BodyCopyButton body={flow.responseBodyPreview} label="Response Body" />}
-      >
-        Body
-      </DetailHeading>
-      <BodyViewer body={flow.responseBodyPreview} label="Response Body" showFormatTabs />
-    </section>
-  );
-}
-
-function MetaGrid({ rows }: { rows: Array<[string, ReactNode]> }) {
-  return (
-    <dl className="meta-grid">
-      {rows.map(([label, value]) => (
-        <Pair key={label} label={label} value={value || "-"} />
-      ))}
-    </dl>
-  );
-}
-
-function Pair({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </>
-  );
-}
-
-function DetailHeading({ action, children }: { action?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="detail-heading">
-      <h3>{children}</h3>
-      {action}
-    </div>
-  );
-}
-
-function HeadersViewer({
-  headers,
-  label
-}: {
-  headers: Array<[string, string]> | undefined;
-  label: string;
-}) {
-  if (!Array.isArray(headers) || headers.length === 0) {
-    return <p className="muted detail-empty-line">No {label.toLowerCase()} captured.</p>;
-  }
-
-  return (
-    <div className="header-viewer">
-      <div className="header-viewer__meta">
-        {headers.length} {headers.length === 1 ? "header" : "headers"}
-      </div>
-      <div className="header-list">
-        {headers.map(([name, value]) => (
-          <div className="header-row" key={`${name}:${value}`}>
-            <span className="header-name">{name}</span>
-            <span className="header-value">{value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BodyCopyButton({ body, label }: { body: BodyPreview | undefined; label: string }) {
-  const buttonState = bodyCopyButtonState(body, label);
-  const [labelText, setLabelText] = useState(buttonState.idleLabel);
-  const [failed, setFailed] = useState(false);
-
-  if (!buttonState.enabled) {
-    return null;
-  }
-
-  async function copy() {
-    try {
-      await copyText(buttonState.text);
-      setLabelText(buttonState.successLabel);
-      setFailed(false);
-    } catch {
-      setLabelText(buttonState.failedLabel);
-      setFailed(true);
-    } finally {
-      window.setTimeout(() => {
-        setLabelText(buttonState.idleLabel);
-        setFailed(false);
-      }, 1200);
-    }
-  }
-
-  return (
-    <button
-      aria-label={buttonState.ariaLabel}
-      className={`body-copy-button${failed ? " is-error" : ""}`}
-      title={buttonState.ariaLabel}
-      type="button"
-      onClick={() => void copy()}
-    >
-      <CopySimpleIcon size={13} weight="bold" />
-      {labelText}
-    </button>
-  );
-}
-
-function CurlCopyButton({ flow }: { flow: CapturedFlow }) {
-  const [labelText, setLabelText] = useState("cURL");
-  const [failed, setFailed] = useState(false);
-
-  async function copy() {
-    try {
-      await copyText(curlCommandForFlow(flow));
-      setLabelText("Copied");
-      setFailed(false);
-    } catch {
-      setLabelText("Failed");
-      setFailed(true);
-    } finally {
-      window.setTimeout(() => {
-        setLabelText("cURL");
-        setFailed(false);
-      }, 1200);
-    }
-  }
-
-  return (
-    <button
-      aria-label="Copy request as cURL"
-      className={`curl-copy-button${failed ? " is-error" : ""}`}
-      title="Copy request as cURL"
-      type="button"
-      onClick={() => void copy()}
-    >
-      <TerminalWindowIcon size={12} weight="bold" />
-      {labelText}
-    </button>
-  );
-}
-
-function BodyViewer({
-  body,
-  label,
-  showFormatTabs = false
-}: {
-  body: BodyPreview | undefined;
-  label: string;
-  showFormatTabs?: boolean;
-}) {
-  const [mode, setMode] = useState<BodyViewMode>("formatted");
-
-  if (!body || body.kind === "empty") {
-    return <p className="muted detail-empty-line">No {label.toLowerCase()} captured.</p>;
-  }
-
-  const rawText = bodyCopyText(body);
-  const json = parseJsonBodyPreview(body);
-  if (json.ok) {
-    const activeMode = showFormatTabs ? mode : "formatted";
-    return (
-      <div className="body-viewer json-viewer">
-        <BodyViewerHeader
-          body={body}
-          format={activeMode === "formatted" ? "JSON" : "Raw"}
-          mode={activeMode}
-          onModeChange={setMode}
-          showTabs={showFormatTabs}
-        />
-        {activeMode === "formatted" ? (
-          <div className="json-tree">
-            <JsonRoot value={json.value} />
-          </div>
-        ) : (
-          <pre className="raw-body">{rawText}</pre>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="body-viewer raw-body-viewer">
-      <div className="body-viewer__meta">{bodyMetaText(body, body.kind || "text")}</div>
-      <pre className="raw-body">{rawText}</pre>
-    </div>
-  );
-}
-
-function BodyViewerHeader({
-  body,
-  format,
-  mode,
-  onModeChange,
-  showTabs
-}: {
-  body: BodyPreview;
-  format: string;
-  mode: BodyViewMode;
-  onModeChange: (mode: BodyViewMode) => void;
-  showTabs: boolean;
-}) {
-  return (
-    <div className="body-viewer__toolbar">
-      <div className="body-viewer__meta">{bodyMetaText(body, format)}</div>
-      {showTabs ? (
-        <div className="body-mode-tabs" role="tablist" aria-label="Response body view">
-          {(["formatted", "raw"] as const).map((tab) => (
-            <button
-              aria-selected={mode === tab}
-              className="body-mode-tab"
-              key={tab}
-              role="tab"
-              type="button"
-              onClick={() => onModeChange(tab)}
-            >
-              {tab === "formatted" ? "Formatted" : "Raw"}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function JsonRoot({ value }: { value: unknown }) {
-  if (!isExpandableJsonValue(value)) {
-    return (
-      <div className="json-root">
-        <JsonLeaf value={value} />
-      </div>
-    );
-  }
-
-  const isArray = Array.isArray(value);
-  const entries = jsonEntries(value);
-
-  return (
-    <div className="json-root">
-      <div className="json-bracket">{isArray ? "[" : "{"}</div>
-      <div className="json-children">
-        {entries.map(([key, childValue]) => (
-          <JsonNode key={key} depth={1} label={key} value={childValue} />
-        ))}
-      </div>
-      <div className="json-bracket">{isArray ? "]" : "}"}</div>
-    </div>
-  );
-}
-
-function JsonNode({ depth, label, value }: { depth: number; label: string; value: unknown }) {
-  if (!isExpandableJsonValue(value)) {
-    return <JsonLeaf label={label} value={value} />;
-  }
-
-  return (
-    <details className="json-node" open={depth === 0}>
-      <summary>
-        <JsonKey value={label} />
-        <span className="json-summary">{summarizeJsonValue(value)}</span>
-      </summary>
-      <div className="json-children">
-        {jsonEntries(value).map(([childKey, childValue]) => (
-          <JsonNode key={childKey} depth={depth + 1} label={childKey} value={childValue} />
-        ))}
-      </div>
-    </details>
-  );
-}
-
-function JsonLeaf({ label, value }: { label?: string; value: unknown }) {
-  return (
-    <div className="json-leaf">
-      {label ? <JsonKey value={label} /> : null}
-      <span className={`json-value json-value--${jsonPrimitiveClass(value)}`}>
-        {summarizeJsonValue(value)}
-      </span>
-    </div>
-  );
-}
-
-function JsonKey({ value }: { value: string }) {
-  return <span className="json-key">{value}</span>;
-}
-
-async function copyText(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.className = "copy-fallback-textarea";
-  document.body.append(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-
-  if (!copied) {
-    throw new Error("Copy command failed");
-  }
-}
-
-function upsertFlowList(
-  current: CapturedFlow[],
-  incomingFlow: CapturedFlow,
-  filters: FlowFilters
-): CapturedFlow[] {
+function upsertFlowList(current: CapturedFlow[], incomingFlow: CapturedFlow): CapturedFlow[] {
   const index = current.findIndex((flow) => flow.id === incomingFlow.id);
-  const matches = flowMatchesFilters(incomingFlow, filters);
 
-  if (index >= 0 && matches) {
+  if (index >= 0) {
     return current.map((flow) => (flow.id === incomingFlow.id ? incomingFlow : flow));
   }
 
-  if (index >= 0) {
-    return current.filter((flow) => flow.id !== incomingFlow.id);
-  }
-
-  if (matches) {
-    return [incomingFlow, ...current];
-  }
-
-  return current;
-}
-
-function flowMatchesFilters(flow: CapturedFlow, filters: FlowFilters): boolean {
-  if (filters.deviceIp && !String(flow.clientIp || "").includes(filters.deviceIp)) {
-    return false;
-  }
-
-  if (
-    filters.path &&
-    !String(flow.path || "").toLowerCase().includes(filters.path.toLowerCase())
-  ) {
-    return false;
-  }
-
-  if (filters.protocol !== "all" && flow.protocol !== filters.protocol) {
-    return false;
-  }
-
-  if (filters.statusClass !== "all") {
-    if (filters.statusClass === "none") {
-      return flow.statusCode === undefined;
-    }
-    if (flow.statusCode === undefined) {
-      return false;
-    }
-    return String(flow.statusCode).startsWith(filters.statusClass[0] ?? "");
-  }
-
-  return true;
-}
-
-function tableStateText({
-  error,
-  filters,
-  flows,
-  loading
-}: {
-  error: string | null;
-  filters: FlowFilters;
-  flows: CapturedFlow[];
-  loading: boolean;
-}): string {
-  if (loading) {
-    return "Loading requests...";
-  }
-
-  if (error) {
-    return error;
-  }
-
-  if (flows.length === 0) {
-    return filtersAreActive(filters)
-      ? "No requests match the current filters."
-      : "No requests captured yet.";
-  }
-
-  return "";
-}
-
-function filtersToParams(filters: FlowFilters): URLSearchParams {
-  const params = new URLSearchParams();
-
-  if (filters.deviceIp) {
-    params.set("deviceIp", filters.deviceIp);
-  }
-  if (filters.path) {
-    params.set("path", filters.path);
-  }
-  if (filters.protocol && filters.protocol !== "all") {
-    params.set("protocol", filters.protocol);
-  }
-  if (filters.statusClass && filters.statusClass !== "all") {
-    params.set("statusClass", filters.statusClass);
-  }
-
-  return params;
+  return [incomingFlow, ...current];
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -1318,454 +416,6 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function filtersAreActive(filters: FlowFilters): boolean {
-  return Boolean(
-    filters.deviceIp ||
-      filters.path ||
-      filters.protocol !== "all" ||
-      filters.statusClass !== "all"
-  );
-}
-
-function statusClass(statusCode: number | undefined, error: string | undefined): string {
-  if (statusCode === undefined) {
-    return error ? "error" : "none";
-  }
-  if (statusCode >= 500) {
-    return "server";
-  }
-  if (statusCode >= 400) {
-    return "client";
-  }
-  if (statusCode >= 300) {
-    return "redirect";
-  }
-  if (statusCode >= 200) {
-    return "ok";
-  }
-  return "info";
-}
-
-function formatTime(value: string | undefined): string {
-  const date = new Date(value || "");
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
-}
-
-function formatDateTime(value: string | undefined): string {
-  const date = new Date(value || "");
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return date.toLocaleString();
-}
-
-function formatDuration(value: number | undefined): string {
-  if (value === undefined || value === null) {
-    return "...";
-  }
-  return `${value} ms`;
-}
-
-function hostWithPort(flow: CapturedFlow): string {
-  if (!flow.port) {
-    return flow.host || "";
-  }
-  const defaultPort =
-    (flow.scheme === "https" && flow.port === 443) || (flow.scheme === "http" && flow.port === 80);
-  return defaultPort ? flow.host || "" : `${flow.host}:${flow.port}`;
-}
-
-function shortSessionId(value: string): string {
-  if (value.length <= 12) {
-    return value;
-  }
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
-
-function safeToken(value: string | undefined): string {
-  return String(value || "unknown").replace(/[^a-z0-9_-]/gi, "").toLowerCase() || "unknown";
-}
-
-function bodyMetaText(body: BodyPreview, format: string): string {
-  if (body.kind === "empty") {
-    return "";
-  }
-
-  const meta = [
-    body.contentType,
-    format,
-    `${body.sizeBytes ?? 0} bytes`,
-    body.truncated && !body.raw ? "truncated" : ""
-  ].filter(Boolean);
-  return meta.join(" | ");
-}
-
-function isExpandableJsonValue(value: unknown): value is Array<unknown> | Record<string, unknown> {
-  return Boolean(value && typeof value === "object");
-}
-
-function jsonEntries(value: Array<unknown> | Record<string, unknown>): Array<[string, unknown]> {
-  return Array.isArray(value)
-    ? Array.from(value.entries()).map(([key, childValue]) => [String(key), childValue])
-    : Object.entries(value);
-}
-
-function jsonPrimitiveClass(value: unknown): string {
-  if (value === null) {
-    return "null";
-  }
-  return typeof value;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function RulesPanel({
-  rules,
-  onClose,
-  onRuleChange,
-  editingRule,
-  onEditRule
-}: {
-  rules: RequestRule[];
-  onClose: () => void;
-  onRuleChange: () => void;
-  editingRule: RequestRule | null;
-  onEditRule: (rule: RequestRule | null) => void;
-}) {
-  async function toggleRule(rule: RequestRule) {
-    try {
-      await fetchJson(`/api/rules/${encodeURIComponent(rule.id)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ enabled: !rule.enabled })
-      });
-      onRuleChange();
-    } catch (error) {
-      console.error("Failed to toggle rule:", error);
-    }
-  }
-
-  async function deleteRule(id: string) {
-    try {
-      await fetchJson(`/api/rules/${encodeURIComponent(id)}`, { method: "DELETE" });
-      onRuleChange();
-    } catch (error) {
-      console.error("Failed to delete rule:", error);
-    }
-  }
-
-  return (
-    <div className="rules-panel-overlay" onClick={onClose}>
-      <div className="rules-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="rules-panel-header">
-          <h2>Request Rules</h2>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              className="tool-button"
-              type="button"
-              onClick={() =>
-                onEditRule({
-                  id: "",
-                  name: "New Rule",
-                  enabled: true,
-                  match: { pathMatchType: "prefix" },
-                  actions: { delayMs: 0, mockMode: false },
-                  createdAt: "",
-                  updatedAt: ""
-                })
-              }
-            >
-              <PlusIcon size={15} weight="bold" />
-              New Rule
-            </button>
-            <button className="tool-button" type="button" onClick={onClose}>
-              <XIcon size={15} weight="bold" />
-              Close
-            </button>
-          </div>
-        </div>
-
-        {editingRule ? (
-          <RuleEditor
-            rule={editingRule}
-            onSave={() => {
-              onRuleChange();
-              onEditRule(null);
-            }}
-            onCancel={() => onEditRule(null)}
-          />
-        ) : (
-          <div className="rules-list">
-            {rules.length === 0 ? (
-              <p className="muted" style={{ padding: "20px", textAlign: "center" }}>
-                No rules configured. Create a rule to delay or modify relay responses.
-              </p>
-            ) : (
-              rules.map((rule) => (
-                <div key={rule.id} className={`rule-card ${rule.enabled ? "is-enabled" : "is-disabled"}`}>
-                  <div className="rule-card-header">
-                    <strong>{rule.name}</strong>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        className="icon-button"
-                        title={rule.enabled ? "Disable rule" : "Enable rule"}
-                        type="button"
-                        onClick={() => void toggleRule(rule)}
-                      >
-                        {rule.enabled ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
-                      </button>
-                      <button
-                        className="icon-button"
-                        title="Edit rule"
-                        type="button"
-                        onClick={() => onEditRule(rule)}
-                      >
-                        <PencilSimpleIcon size={14} />
-                      </button>
-                      <button
-                        className="icon-button"
-                        title="Delete rule"
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Delete rule "${rule.name}"?`)) {
-                            void deleteRule(rule.id);
-                          }
-                        }}
-                      >
-                        <TrashIcon size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="rule-card-details">
-                    <div>
-                      <span className="label">Match:</span>{" "}
-                      {rule.match.method || "ANY"} {rule.match.pathMatch || "*"}
-                      {rule.match.originalHost && ` @ ${rule.match.originalHost}`}
-                    </div>
-                    <div>
-                      <span className="label">Actions:</span>{" "}
-                      {rule.actions.delayMs > 0 && `Delay ${rule.actions.delayMs}ms`}
-                      {rule.actions.rewriteStatusCode && ` • Status ${rule.actions.rewriteStatusCode}`}
-                      {rule.actions.rewriteBody && " • Rewrite body"}
-                      {rule.actions.mockMode && " • Mock mode"}
-                      {!rule.actions.delayMs &&
-                        !rule.actions.rewriteStatusCode &&
-                        !rule.actions.rewriteBody &&
-                        !rule.actions.mockMode &&
-                        "None"}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function RuleEditor({
-  rule,
-  onSave,
-  onCancel
-}: {
-  rule: RequestRule;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(rule.name);
-  const [method, setMethod] = useState(rule.match.method || "");
-  const [pathMatch, setPathMatch] = useState(rule.match.pathMatch || "");
-  const [pathMatchType, setPathMatchType] = useState(rule.match.pathMatchType);
-  const [originalHost, setOriginalHost] = useState(rule.match.originalHost || "");
-  const [delayMs, setDelayMs] = useState(String(rule.actions.delayMs));
-  const [mockMode, setMockMode] = useState(rule.actions.mockMode);
-  const [mockStatusCode, setMockStatusCode] = useState(String(rule.actions.mockStatusCode || ""));
-  const [mockBody, setMockBody] = useState(rule.actions.mockBody || "");
-  const [rewriteStatusCode, setRewriteStatusCode] = useState(
-    String(rule.actions.rewriteStatusCode || "")
-  );
-  const [rewriteBodyJson, setRewriteBodyJson] = useState(
-    rule.actions.rewriteBody ? JSON.stringify(rule.actions.rewriteBody, null, 2) : ""
-  );
-  const [saving, setSaving] = useState(false);
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const ruleData: Partial<RequestRule> = {
-        name,
-        enabled: rule.enabled,
-        match: {
-          method: method || undefined,
-          pathMatch: pathMatch || undefined,
-          pathMatchType,
-          originalHost: originalHost || undefined
-        },
-        actions: {
-          delayMs: Number(delayMs) || 0,
-          mockMode,
-          mockStatusCode: mockMode && mockStatusCode ? Number(mockStatusCode) : undefined,
-          mockBody: mockMode ? mockBody : undefined,
-          rewriteStatusCode: !mockMode && rewriteStatusCode ? Number(rewriteStatusCode) : undefined,
-          rewriteBody:
-            !mockMode && rewriteBodyJson
-              ? (JSON.parse(rewriteBodyJson) as Record<string, unknown>)
-              : undefined
-        }
-      };
-
-      if (rule.id) {
-        await fetchJson(`/api/rules/${encodeURIComponent(rule.id)}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(ruleData)
-        });
-      } else {
-        await fetchJson("/api/rules", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(ruleData)
-        });
-      }
-
-      onSave();
-    } catch (error) {
-      console.error("Failed to save rule:", error);
-      alert(`Failed to save rule: ${errorMessage(error)}`);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="rule-editor">
-      <div className="rule-editor-section">
-        <h3>Rule Details</h3>
-        <label>
-          <span>Rule Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Rule" />
-        </label>
-      </div>
-
-      <div className="rule-editor-section">
-        <h3>Match Conditions</h3>
-        <label>
-          <span>HTTP Method</span>
-          <select value={method} onChange={(e) => setMethod(e.target.value)}>
-            <option value="">ANY</option>
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-            <option value="PATCH">PATCH</option>
-            <option value="DELETE">DELETE</option>
-          </select>
-        </label>
-        <label>
-          <span>Path Match Type</span>
-          <select value={pathMatchType} onChange={(e) => setPathMatchType(e.target.value as "prefix" | "glob")}>
-            <option value="prefix">Prefix</option>
-            <option value="glob">Glob</option>
-          </select>
-        </label>
-        <label>
-          <span>Path Pattern</span>
-          <input
-            value={pathMatch}
-            onChange={(e) => setPathMatch(e.target.value)}
-            placeholder="/v1/me"
-          />
-        </label>
-        <label>
-          <span>Original Host (optional)</span>
-          <input
-            value={originalHost}
-            onChange={(e) => setOriginalHost(e.target.value)}
-            placeholder="api.rela.me"
-          />
-        </label>
-      </div>
-
-      <div className="rule-editor-section">
-        <h3>Actions</h3>
-        <label>
-          <span>Delay (ms)</span>
-          <input
-            type="number"
-            value={delayMs}
-            onChange={(e) => setDelayMs(e.target.value)}
-            placeholder="0"
-          />
-        </label>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: "8px" }}>
-          <input type="checkbox" checked={mockMode} onChange={(e) => setMockMode(e.target.checked)} />
-          <span>Mock Mode (skip upstream)</span>
-        </label>
-        {mockMode ? (
-          <>
-            <label>
-              <span>Mock Status Code</span>
-              <input
-                type="number"
-                value={mockStatusCode}
-                onChange={(e) => setMockStatusCode(e.target.value)}
-                placeholder="200"
-              />
-            </label>
-            <label>
-              <span>Mock Body</span>
-              <JsonBodyEditor
-                value={mockBody}
-                onChange={setMockBody}
-                placeholder='{"message": "mocked"}'
-                rows={4}
-                label="Mock Body"
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label>
-              <span>Rewrite Status Code (optional)</span>
-              <input
-                type="number"
-                value={rewriteStatusCode}
-                onChange={(e) => setRewriteStatusCode(e.target.value)}
-                placeholder="Original status"
-              />
-            </label>
-            <label>
-              <span>Rewrite Body JSON (merge, optional)</span>
-              <JsonBodyEditor
-                value={rewriteBodyJson}
-                onChange={setRewriteBodyJson}
-                placeholder='{"field": "value"}'
-                rows={4}
-                label="Rewrite Body JSON"
-              />
-            </label>
-          </>
-        )}
-      </div>
-
-      <div className="rule-editor-actions">
-        <button className="button button--primary" type="button" onClick={() => void handleSave()} disabled={saving}>
-          {saving ? "Saving..." : rule.id ? "Update Rule" : "Create Rule"}
-        </button>
-        <button className="button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
 }
