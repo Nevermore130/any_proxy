@@ -1727,3 +1727,195 @@ pre {
 .applied-rule-badge strong {
   font-weight: 600;
 }
+
+/* What's New Update Modal */
+.update-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.update-modal {
+  position: relative;
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  width: 90%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow: auto;
+  animation: slideUp 0.3s ease-out;
+}
+
+.update-modal__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--control-hover);
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.update-modal__close:hover {
+  background: var(--control-border);
+  color: var(--text);
+}
+
+.update-modal__header {
+  padding: 32px 32px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.update-modal__badge {
+  display: inline-block;
+  background: var(--blue-soft);
+  color: var(--blue-strong);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.update-modal__title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.update-modal__body {
+  padding: 24px 32px;
+}
+
+.update-modal__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.update-modal__list li {
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: 12px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.update-modal__list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.update-modal__footer {
+  padding: 16px 32px 32px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* Feature Tour */
+.feature-tour-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9998;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.feature-tour-spotlight {
+  position: fixed;
+  background: var(--panel);
+  border-radius: 8px;
+  box-shadow: 0 0 0 4px var(--blue), 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  transition: all 0.3s ease-out;
+  pointer-events: none;
+}
+
+.feature-tour-tooltip {
+  position: fixed;
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  padding: 20px;
+  z-index: 10000;
+  animation: slideUp 0.3s ease-out;
+}
+
+.feature-tour-tooltip__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.feature-tour-tooltip__header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.feature-tour-tooltip__body {
+  margin: 0 0 16px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.feature-tour-tooltip__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.feature-tour-progress {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.feature-tour-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

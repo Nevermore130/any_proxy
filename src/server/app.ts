@@ -1,4 +1,5 @@
 import express, { type Express, type Response } from "express";
+import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -185,9 +186,11 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     app.use(express.static(staticDir));
   }
 
-  app.get("/api/status", (request, response) => {
+  app.get("/api/status", async (request, response) => {
     const captureSessionId = ensureCaptureSession(request, response);
+    const version = await getAppVersion(rootDir);
     response.json({
+      version,
       capture: { paused: options.store.isPaused() },
       dashboard: { host: dashboardHost, port: options.dashboardPort },
       relay: {
@@ -332,7 +335,29 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     response.json({ deleted: true });
   });
 
+  app.get("/api/whats-new", async (_request, response) => {
+    try {
+      const whatsNewPath = path.join(rootDir, "src", "client", "whats-new.json");
+      const content = await readFile(whatsNewPath, "utf-8");
+      const whatsNew = JSON.parse(content);
+      response.json({ entries: whatsNew });
+    } catch (error) {
+      response.status(500).json({ error: "Failed to load what's new data" });
+    }
+  });
+
   return app;
+}
+
+async function getAppVersion(rootDir: string): Promise<string> {
+  try {
+    const packageJsonPath = path.join(rootDir, "package.json");
+    const content = await readFile(packageJsonPath, "utf-8");
+    const packageJson = JSON.parse(content) as { version?: string };
+    return packageJson.version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
 }
 
 export function dashboardStaticDirs(rootDir: string): string[] {

@@ -25,7 +25,23 @@ import { bodyCopyButtonState, bodyCopyText } from "./lib/bodyActions.js";
 import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
-import type { BodyPreview, CapturedFlow, FlowFilters, RequestRule, StatusResponse } from "./types.js";
+import {
+  findUnreadEntry,
+  isTourCompleted,
+  markTourCompleted,
+  setLastSeenVersion
+} from "./lib/whatsNewHelpers.js";
+import type {
+  BodyPreview,
+  CapturedFlow,
+  FlowFilters,
+  RequestRule,
+  StatusResponse,
+  WhatsNewEntry,
+  WhatsNewResponse
+} from "./types.js";
+import { FeatureTour } from "./components/FeatureTour.js";
+import { UpdateModal } from "./components/UpdateModal.js";
 
 type FlowsResponse = {
   flows?: CapturedFlow[];
@@ -73,6 +89,9 @@ export function App() {
     flowsError: null,
     statusError: null
   });
+  const [unreadEntry, setUnreadEntry] = useState<WhatsNewEntry | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const filtersRef = useRef(filters);
   const selectedIdRef = useRef(selectedId);
@@ -111,6 +130,30 @@ export function App() {
         ...current,
         statusError: `Status unavailable: ${errorMessage(error)}`
       }));
+    }
+  }
+
+  async function checkForUpdates() {
+    try {
+      const [statusData, whatsNewData] = await Promise.all([
+        fetchJson<StatusResponse>("/api/status"),
+        fetchJson<WhatsNewResponse>("/api/whats-new")
+      ]);
+
+      const currentVersion = statusData.version || "0.0.0";
+      const unread = findUnreadEntry(whatsNewData.entries, currentVersion);
+
+      if (unread) {
+        const tourId = `tour-${unread.version}`;
+        const tourAlreadyCompleted = isTourCompleted(tourId);
+
+        if (!tourAlreadyCompleted) {
+          setUnreadEntry(unread);
+          setShowUpdateModal(true);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to check for updates:", error);
     }
   }
 
@@ -224,6 +267,7 @@ export function App() {
   useEffect(() => {
     void loadStatus();
     void loadRules();
+    void checkForUpdates();
     const timer = window.setInterval(() => {
       void loadStatus();
     }, 3000);
@@ -304,6 +348,37 @@ export function App() {
   const statusState = banner.statusError ? "error" : paused ? "paused" : "running";
   const nextTheme = theme === "dark" ? "light" : "dark";
 
+  const handleDismissUpdate = () => {
+    if (unreadEntry) {
+      setLastSeenVersion(unreadEntry.version);
+    }
+    setShowUpdateModal(false);
+    setUnreadEntry(null);
+  };
+
+  const handleStartTour = () => {
+    setShowUpdateModal(false);
+    setShowTour(true);
+  };
+
+  const handleCompleteTour = () => {
+    if (unreadEntry) {
+      setLastSeenVersion(unreadEntry.version);
+      markTourCompleted(`tour-${unreadEntry.version}`);
+    }
+    setShowTour(false);
+    setUnreadEntry(null);
+  };
+
+  const handleSkipTour = () => {
+    if (unreadEntry) {
+      setLastSeenVersion(unreadEntry.version);
+      markTourCompleted(`tour-${unreadEntry.version}`);
+    }
+    setShowTour(false);
+    setUnreadEntry(null);
+  };
+
   return (
     <main className="shell" data-theme={theme}>
       <header className="topbar">
@@ -339,6 +414,7 @@ export function App() {
           <button
             className="tool-button"
             type="button"
+            data-tour="rules-button"
             onClick={() => setShowRulesPanel(!showRulesPanel)}
           >
             <GearIcon size={15} weight="bold" />
@@ -519,6 +595,22 @@ export function App() {
           setShowRulesPanel(true);
         }} />
       </section>
+
+      {showUpdateModal && unreadEntry && (
+        <UpdateModal
+          entry={unreadEntry}
+          onDismiss={handleDismissUpdate}
+          onStartTour={handleStartTour}
+        />
+      )}
+
+      {showTour && unreadEntry?.tour && (
+        <FeatureTour
+          steps={unreadEntry.tour}
+          onComplete={handleCompleteTour}
+          onSkip={handleSkipTour}
+        />
+      )}
     </main>
   );
 }
@@ -707,6 +799,7 @@ function RequestDetail({ flow, loadingId, onCreateRule }: { flow: CapturedFlow |
               className="curl-copy-button"
               title="Create rule from this request"
               type="button"
+              data-tour="create-rule-button"
               onClick={() => onCreateRule(flow)}
             >
               <PlusIcon size={12} weight="bold" />
