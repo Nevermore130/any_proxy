@@ -20,6 +20,9 @@ export type RawCapturedFlow = {
   startedAtEpochMs: number;
   durationMs?: number;
   protocol: Protocol;
+  projectId?: string;
+  projectName?: string;
+  projectType?: string;
   method: string;
   scheme: string;
   host: string;
@@ -58,6 +61,9 @@ export type CapturedFlow = {
   startedAt: string;
   durationMs?: number;
   protocol: Protocol;
+  projectId?: string;
+  projectName?: string;
+  projectType?: string;
   method: string;
   scheme: string;
   host: string;
@@ -83,6 +89,7 @@ export type CapturedFlow = {
 export type FlowFilters = {
   deviceIp?: string;
   path?: string;
+  projectId?: string;
   protocol?: Protocol | "all";
   statusClass?: "all" | "1xx" | "2xx" | "3xx" | "4xx" | "5xx" | "none";
 };

@@ -14,6 +14,9 @@ export type CapturedFlow = {
   startedAt?: string;
   method?: string;
   protocol?: string;
+  projectId?: string;
+  projectName?: string;
+  projectType?: string;
   scheme?: string;
   host?: string;
   port?: number;
@@ -65,6 +68,26 @@ export type StatusResponse = {
       targetOrigin?: string;
     };
   };
+  projects?: {
+    defaultProjectId?: string;
+    items?: CaptureProject[];
+  };
+};
+
+export type CaptureProject = {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+  relayPath: string;
+  relayBaseUrl: string;
+  targetOrigin: string;
+  allowedHosts: string[];
+  sessionHeaderName: string;
+  originalHostHeaderName: string;
+  builtIn: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type WhatsNewTourStep = {

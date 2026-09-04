@@ -2,7 +2,7 @@
 
 Rela Capture is an App relay capture service for internal Rela app testing. The app points its debug API base URL at this service, the service forwards requests to the configured upstream API origin, and the dashboard records request/response metadata and body previews.
 
-This project no longer runs a phone system proxy, mitmproxy, CA certificate installer, QR onboarding page, or iOS proxy profile. It only captures traffic that the app explicitly sends through `/relay/rela`.
+This project no longer runs a phone system proxy, mitmproxy, CA certificate installer, QR onboarding page, or iOS proxy profile. It only captures traffic that the app explicitly sends through a project relay path such as `/relay/rela`.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ Default dashboard port:
 
 ## Rela App Relay
 
-Set the Rela app debug API base URL to:
+The dashboard ships with a built-in `热拉` project. Set the Rela app debug API base URL to:
 
 ```text
 http://<host>:5177/relay/rela
@@ -83,6 +83,33 @@ The normal HTTP `Host` header should stay as the relay service host, such as
 ```bash
 RELA_RELAY_TARGET_ORIGIN=https://api.rela.me
 ```
+
+## Projects
+
+Projects separate different app integrations. A project owns:
+
+- display name
+- QR payload `type`
+- relay path and relay URL
+- fallback target origin
+- allowed upstream hosts
+- capture session header names
+
+The default `热拉` project uses:
+
+```json
+{
+  "type": "rela_capture_session",
+  "version": 1,
+  "relayBaseUrl": "http://<host>:5177/relay/rela",
+  "sessionId": "cap_...",
+  "headerName": "X-Rela-Capture-Session"
+}
+```
+
+Open **Projects** in the dashboard toolbar to add another project. Creating a new project is essentially creating a new QR payload `type`; the service derives a relay path such as `/relay/my_app_capture_session`, and the QR code points the app at that project-specific relay URL. Captured traffic is tagged with the project and the dashboard project selector filters the request list by project.
+
+Project settings are persisted to `data/projects.json`.
 
 ## Docker Deployment
 

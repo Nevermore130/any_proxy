@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 import { FlowStore } from "./flowStore.js";
 import type { LanAddress } from "./lan.js";
+import { ProjectStore, type CaptureProject } from "./projectStore.js";
 import { createRelayHandler, relayAllowedTargetHosts } from "./relay.js";
 import { RuleStore } from "./ruleStore.js";
 import { captureSessionQrPayload, ensureCaptureSession } from "./session.js";
@@ -18,6 +19,7 @@ export type CreateAppOptions = {
   advertiseHost?: string;
   dashboardHost?: string;
   dashboardPort: number;
+  projectStore?: ProjectStore;
   relayAllowedHosts?: readonly string[];
   relayHostOverrides?: Record<string, string>;
   relayTargetOrigin?: string;
@@ -165,20 +167,41 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   );
   const relayTargetOrigin = options.relayTargetOrigin ?? "https://api.rela.me";
   const relayAllowedHosts = relayAllowedTargetHosts(options.relayAllowedHosts);
-  const relayBaseUrl = `${publicHttpOrigin(dashboardHost, options.dashboardPort)}/relay/rela`;
+  const publicOrigin = publicHttpOrigin(dashboardHost, options.dashboardPort);
+  const projectStore =
+    options.projectStore ??
+    new ProjectStore({
+      defaultAllowedHosts: relayAllowedHosts,
+      defaultTargetOrigin: relayTargetOrigin
+    });
 
   app.all(
-    /^\/relay\/rela(?:\/.*)?$/,
+    /^\/relay(?:\/.*)?$/,
     express.raw({ type: "*/*", limit: "20mb" }),
-    createRelayHandler({
-      broadcastFlow: eventHub.broadcastFlow,
-      allowedTargetHosts: relayAllowedHosts,
-      hostOriginOverrides: options.relayHostOverrides,
-      prefix: "/relay/rela",
-      store: options.store,
-      ruleStore: options.ruleStore,
-      targetOrigin: relayTargetOrigin
-    })
+    (request, response, next) => {
+      const project = projectStore.findByRelayPath(request.path);
+      if (!project) {
+        response.status(404).json({ error: "relay project not found" });
+        return;
+      }
+
+      return createRelayHandler({
+        broadcastFlow: eventHub.broadcastFlow,
+        allowedTargetHosts: project.allowedHosts,
+        captureSessionHeaderName: project.sessionHeaderName,
+        hostOriginOverrides: options.relayHostOverrides,
+        originalHostHeaderName: project.originalHostHeaderName,
+        prefix: project.relayPath,
+        project: {
+          id: project.id,
+          name: project.name,
+          type: project.type
+        },
+        store: options.store,
+        ruleStore: options.ruleStore,
+        targetOrigin: project.targetOrigin
+      })(request, response, next);
+    }
   );
 
   app.use(express.json());
@@ -189,20 +212,28 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
   app.get("/api/status", async (request, response) => {
     const captureSessionId = ensureCaptureSession(request, response);
     const version = await getAppVersion(rootDir);
+    const defaultProject = projectStore.getDefault();
+    const defaultProjectStatus = projectStatus(defaultProject, publicOrigin);
+    const relaProject = projectStore.get("rela") ?? defaultProject;
+    const relaProjectStatus = projectStatus(relaProject, publicOrigin);
     response.json({
       version,
       capture: { paused: options.store.isPaused() },
       dashboard: { host: dashboardHost, port: options.dashboardPort },
       relay: {
         rela: {
-          allowedHosts: relayAllowedHosts,
-          baseUrl: relayBaseUrl,
-          targetOrigin: relayTargetOrigin
+          allowedHosts: relaProject.allowedHosts,
+          baseUrl: relaProjectStatus.relayBaseUrl,
+          targetOrigin: relaProject.targetOrigin
         }
+      },
+      projects: {
+        defaultProjectId: defaultProject.id,
+        items: projectStore.list().map((project) => projectStatus(project, publicOrigin))
       },
       session: {
         id: captureSessionId,
-        qrPayload: captureSessionQrPayload(relayBaseUrl, captureSessionId)
+        qrPayload: projectQrPayload(defaultProjectStatus.relayBaseUrl, captureSessionId, defaultProject)
       },
       lanAddresses: options.lanAddresses
     });
@@ -210,7 +241,12 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
 
   app.get("/api/session/qr.svg", async (request, response) => {
     const captureSessionId = ensureCaptureSession(request, response);
-    const payload = captureSessionQrPayload(relayBaseUrl, captureSessionId);
+    const project = projectFromQuery(request.query, projectStore);
+    if (!project) {
+      response.status(404).json({ error: "project not found" });
+      return;
+    }
+    const payload = projectQrPayload(projectStatus(project, publicOrigin).relayBaseUrl, captureSessionId, project);
     const svg = await QRCode.toString(JSON.stringify(payload), {
       errorCorrectionLevel: "M",
       margin: 1,
@@ -218,6 +254,49 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
       width: 220
     });
     response.type("image/svg+xml").send(svg);
+  });
+
+  app.get("/api/projects", (_request, response) => {
+    response.json({
+      defaultProjectId: projectStore.getDefault().id,
+      projects: projectStore.list().map((project) => projectStatus(project, publicOrigin))
+    });
+  });
+
+  app.post("/api/projects", (request, response) => {
+    try {
+      const project = projectStore.create(request.body as Record<string, unknown>);
+      response.status(201).json({ project: projectStatus(project, publicOrigin) });
+    } catch (error) {
+      response.status(400).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.patch("/api/projects/:id", (request, response) => {
+    try {
+      const project = projectStore.update(
+        request.params.id,
+        request.body as Record<string, unknown>
+      );
+      if (!project) {
+        response.status(404).json({ error: "Project not found" });
+        return;
+      }
+
+      response.json({ project: projectStatus(project, publicOrigin) });
+    } catch (error) {
+      response.status(400).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.delete("/api/projects/:id", (request, response) => {
+    const deleted = projectStore.delete(request.params.id);
+    if (!deleted) {
+      response.status(404).json({ error: "Project not found or cannot be deleted" });
+      return;
+    }
+
+    response.json({ deleted: true });
   });
 
   app.get("/api/flows", (request, response) => {
@@ -250,7 +329,8 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
 
   app.post("/api/flows/clear", (_request, response) => {
     const captureSessionId = ensureCaptureSession(_request, response);
-    options.store.clear(captureSessionId);
+    const projectId = stringQuery(_request.query.projectId);
+    options.store.clear(captureSessionId, projectId);
     eventHub.broadcastClear(captureSessionId);
     response.json({ cleared: true });
   });
@@ -369,6 +449,49 @@ async function getAppVersion(rootDir: string): Promise<string> {
   }
 }
 
+type CaptureProjectStatus = CaptureProject & {
+  relayBaseUrl: string;
+};
+
+function projectStatus(project: CaptureProject, publicOrigin: string): CaptureProjectStatus {
+  return {
+    ...project,
+    relayBaseUrl: `${publicOrigin}${project.relayPath}`
+  };
+}
+
+function projectQrPayload(
+  relayBaseUrl: string,
+  captureSessionId: string,
+  project: CaptureProject
+) {
+  return captureSessionQrPayload(relayBaseUrl, captureSessionId, {
+    type: project.type,
+    headerName: project.sessionHeaderName
+  });
+}
+
+function projectFromQuery(
+  query: Record<string, unknown>,
+  projectStore: ProjectStore
+): CaptureProject | undefined {
+  const projectId = stringQuery(query.projectId);
+  if (projectId) {
+    return projectStore.get(projectId);
+  }
+
+  const projectType = stringQuery(query.type);
+  if (projectType) {
+    return projectStore.list().find((project) => project.type === projectType);
+  }
+
+  return projectStore.getDefault();
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function dashboardStaticDirs(rootDir: string): string[] {
   return [path.join(rootDir, "dist", "public"), path.join(rootDir, "public")];
 }
@@ -453,6 +576,7 @@ function filtersFromQuery(query: Record<string, unknown>): FlowFilters {
   return {
     deviceIp: stringQuery(query.deviceIp),
     path: stringQuery(query.path),
+    projectId: stringQuery(query.projectId),
     ...(protocol ? { protocol } : {}),
     ...(statusClass ? { statusClass } : {})
   };

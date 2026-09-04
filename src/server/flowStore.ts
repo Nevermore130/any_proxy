@@ -24,11 +24,15 @@ export class FlowStore {
     return this.paused;
   }
 
-  clear(captureSessionId?: string): void {
-    if (captureSessionId) {
+  clear(captureSessionId?: string, projectId?: string): void {
+    if (captureSessionId || projectId) {
       for (const id of Array.from(this.order)) {
         const flow = this.flows.get(id);
-        if (flow && this.matchesCaptureSession(flow, captureSessionId)) {
+        if (
+          flow &&
+          this.matchesCaptureSession(flow, captureSessionId) &&
+          this.matchesProject(flow, projectId)
+        ) {
           this.flows.delete(id);
           this.order.splice(this.order.indexOf(id), 1);
         }
@@ -53,6 +57,9 @@ export class FlowStore {
       startedAt: new Date(event.flow.startedAtEpochMs).toISOString(),
       durationMs: event.flow.durationMs ?? existing?.durationMs,
       protocol: event.flow.protocol,
+      projectId: event.flow.projectId ?? existing?.projectId,
+      projectName: event.flow.projectName ?? existing?.projectName,
+      projectType: event.flow.projectType ?? existing?.projectType,
       method: event.flow.method,
       scheme: event.flow.scheme,
       host: event.flow.host,
@@ -123,6 +130,10 @@ export class FlowStore {
     }
 
     return !flow.captureSessionId || flow.captureSessionId === captureSessionId;
+  }
+
+  private matchesProject(flow: CapturedFlow, projectId: string | undefined): boolean {
+    return !projectId || flow.projectId === projectId;
   }
 
   private trim(nowEpochMs = Date.now()): void {

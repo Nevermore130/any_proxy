@@ -98,6 +98,112 @@ describe("createApp", () => {
     expect(qr.text ?? qr.body.toString("utf8")).toContain("<svg");
   });
 
+  it("manages capture projects and routes relay traffic by project path", async () => {
+    const upstream = http.createServer((request, response) => {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true, host: request.headers.host, url: request.url }));
+    });
+    upstream.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => upstream.once("listening", resolve));
+
+    try {
+      const upstreamAddress = upstream.address() as AddressInfo;
+      const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
+      const ruleStore = new RuleStore();
+      const app = createApp({
+        store,
+        ruleStore,
+        lanAddresses: [{ interfaceName: "en0", address: "192.168.1.10" }],
+        dashboardPort: 5177,
+        relayTargetOrigin: `http://127.0.0.1:${upstreamAddress.port}`,
+        relayHostOverrides: {
+          "demo-api.example.com": `http://127.0.0.1:${upstreamAddress.port}`
+        }
+      });
+      const browser = request.agent(app);
+      const session = (await browser.get("/api/status").expect(200)).body.session.id;
+
+      const projectsBefore = await browser.get("/api/projects").expect(200);
+      expect(projectsBefore.body.defaultProjectId).toBe("rela");
+      expect(projectsBefore.body.projects[0]).toMatchObject({
+        id: "rela",
+        name: "热拉",
+        type: "rela_capture_session",
+        relayBaseUrl: "http://192.168.1.10:5177/relay/rela"
+      });
+      const updatedDefault = await browser
+        .patch("/api/projects/rela")
+        .send({ type: "broken_capture_session" })
+        .expect(200);
+      expect(updatedDefault.body.project.type).toBe("rela_capture_session");
+      expect(updatedDefault.body.project.relayPath).toBe("/relay/rela");
+
+      const created = await browser
+        .post("/api/projects")
+        .send({
+          name: "Demo App",
+          type: "demo_capture_session",
+          targetOrigin: `http://127.0.0.1:${upstreamAddress.port}`,
+          allowedHosts: ["demo-api.example.com"]
+        })
+        .expect(201);
+      expect(created.body.project).toMatchObject({
+        name: "Demo App",
+        type: "demo_capture_session",
+        relayPath: "/relay/demo_capture_session",
+        relayBaseUrl: "http://192.168.1.10:5177/relay/demo_capture_session"
+      });
+
+      const projectId = created.body.project.id as string;
+      const qr = await browser
+        .get(`/api/session/qr.svg?projectId=${encodeURIComponent(projectId)}`)
+        .expect(200);
+      expect(qr.headers["content-type"]).toContain("image/svg+xml");
+      await request(app).get("/relay").expect(404);
+
+      await request(app)
+        .get("/relay/demo_capture_session/v1/demo?debug=1")
+        .set("X-Rela-Capture-Session", session)
+        .set("X-Rela-Original-Host", "demo-api.example.com")
+        .expect(200);
+      await request(app)
+        .get("/relay/rela/v1/default")
+        .set("X-Rela-Capture-Session", session)
+        .expect(200);
+
+      const demoFlows = await browser
+        .get(`/api/flows?projectId=${encodeURIComponent(projectId)}`)
+        .expect(200);
+      expect(demoFlows.body.flows).toHaveLength(1);
+      expect(demoFlows.body.flows[0]).toMatchObject({
+        projectId,
+        projectName: "Demo App",
+        projectType: "demo_capture_session",
+        path: "/v1/demo?debug=1"
+      });
+
+      await browser
+        .post(`/api/flows/clear?projectId=${encodeURIComponent(projectId)}`)
+        .expect(200);
+      expect(
+        (await browser.get(`/api/flows?projectId=${encodeURIComponent(projectId)}`).expect(200))
+          .body.flows
+      ).toHaveLength(0);
+      expect((await browser.get("/api/flows?projectId=rela").expect(200)).body.flows).toHaveLength(1);
+
+      await browser.patch(`/api/projects/${encodeURIComponent(projectId)}`).send({ enabled: false }).expect(200);
+      await request(app)
+        .get("/relay/demo_capture_session/v1/demo")
+        .set("X-Rela-Capture-Session", session)
+        .expect(404);
+      await browser.delete(`/api/projects/${encodeURIComponent(projectId)}`).expect(200);
+      await browser.delete("/api/projects/rela").expect(404);
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
   it("does not expose system proxy onboarding routes", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const ruleStore = new RuleStore();

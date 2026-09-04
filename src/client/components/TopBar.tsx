@@ -4,18 +4,23 @@ import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { DeviceMobileIcon } from "@phosphor-icons/react/dist/csr/DeviceMobile";
-import type { StatusResponse } from "../types.js";
+import { FolderIcon } from "@phosphor-icons/react/dist/csr/Folder";
+import type { CaptureProject, StatusResponse } from "../types.js";
 
 type TopBarProps = {
   status: StatusResponse | null;
   paused: boolean;
   actionInFlight: boolean;
   rulesCount: number;
+  projects: CaptureProject[];
+  selectedProjectId: string;
   exportUrl: string;
   onTogglePause: () => void;
   onClearFlows: () => void;
   onShowRules: () => void;
   onShowBindDevice: () => void;
+  onShowProjects: () => void;
+  onProjectChange: (projectId: string) => void;
 };
 
 export function TopBar({
@@ -23,11 +28,15 @@ export function TopBar({
   paused,
   actionInFlight,
   rulesCount,
+  projects,
+  selectedProjectId,
   exportUrl,
   onTogglePause,
   onClearFlows,
   onShowRules,
-  onShowBindDevice
+  onShowBindDevice,
+  onShowProjects,
+  onProjectChange
 }: TopBarProps) {
   const captureSessionId = status?.session?.id || "";
 
@@ -40,18 +49,35 @@ export function TopBar({
         </div>
         <div className="postman-topbar__divider" />
         <div className="postman-topbar__environment">
-          <select className="postman-select">
-            <option>No Environment</option>
-            {captureSessionId && (
-              <option value={captureSessionId}>
-                Session: {captureSessionId.slice(0, 8)}...
-              </option>
+          <select
+            className="postman-select postman-select--project"
+            value={selectedProjectId}
+            onChange={(event) => onProjectChange(event.target.value)}
+            title={captureSessionId ? `Session: ${captureSessionId}` : "Capture project"}
+          >
+            {projects.length === 0 ? (
+              <option value={selectedProjectId}>热拉</option>
+            ) : (
+              projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))
             )}
           </select>
         </div>
       </div>
 
       <div className="postman-topbar__right">
+        <button
+          className="postman-btn postman-btn--secondary"
+          type="button"
+          onClick={onShowProjects}
+          title="管理抓包项目"
+        >
+          <FolderIcon size={16} weight="bold" />
+          Projects
+        </button>
         <button
           className="postman-btn postman-btn--secondary postman-btn--bind"
           type="button"

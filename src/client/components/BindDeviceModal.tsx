@@ -2,21 +2,23 @@ import { useState } from "react";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { CopySimpleIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
-import type { StatusResponse } from "../types.js";
+import type { CaptureProject, StatusResponse } from "../types.js";
 
 type BindDeviceModalProps = {
+  project: CaptureProject | null;
   status: StatusResponse | null;
   onClose: () => void;
 };
 
-export function BindDeviceModal({ status, onClose }: BindDeviceModalProps) {
+export function BindDeviceModal({ project, status, onClose }: BindDeviceModalProps) {
   const [copiedRelay, setCopiedRelay] = useState(false);
   const [copiedSession, setCopiedSession] = useState(false);
 
   const captureSessionId = status?.session?.id || "";
-  const relayBaseUrl = status?.relay?.rela?.baseUrl || "";
-  const sessionQrUrl = captureSessionId
-    ? `/api/session/qr.svg?sid=${encodeURIComponent(captureSessionId)}`
+  const relayBaseUrl = project?.relayBaseUrl || status?.relay?.rela?.baseUrl || "";
+  const projectType = project?.type || status?.session?.qrPayload?.type || "";
+  const sessionQrUrl = captureSessionId && project
+    ? `/api/session/qr.svg?projectId=${encodeURIComponent(project.id)}`
     : "";
 
   async function copyToClipboard(text: string, type: "relay" | "session") {
@@ -57,10 +59,10 @@ export function BindDeviceModal({ status, onClose }: BindDeviceModalProps) {
               </div>
 
               <div className="bind-device-steps">
-                <h3>绑定步骤</h3>
+                <h3>{project?.name || "当前项目"} 绑定</h3>
                 <ol>
                   <li>打开 Rela App 调试设置</li>
-                  <li>扫描上方二维码，或手动粘贴下方 Relay URL</li>
+                  <li>扫描上方二维码，App 会读取项目 type 与 Relay URL</li>
                   <li>App 发送的请求将出现在左侧「Captured Traffic」列表中</li>
                 </ol>
               </div>
@@ -92,6 +94,18 @@ export function BindDeviceModal({ status, onClose }: BindDeviceModalProps) {
                         </>
                       )}
                     </button>
+                  </div>
+                </div>
+
+                <div className="bind-device-field">
+                  <label>Project Type</label>
+                  <div className="bind-device-input-group">
+                    <input
+                      type="text"
+                      value={projectType}
+                      readOnly
+                      className="bind-device-input"
+                    />
                   </div>
                 </div>
 

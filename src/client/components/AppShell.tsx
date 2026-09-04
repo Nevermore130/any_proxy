@@ -10,6 +10,7 @@ type AppShellProps = {
   featureTour?: ReactNode;
   banner?: ReactNode;
   bindDeviceModal?: ReactNode;
+  projectSettingsModal?: ReactNode;
 };
 
 export function AppShell({
@@ -21,7 +22,8 @@ export function AppShell({
   updateModal,
   featureTour,
   banner,
-  bindDeviceModal
+  bindDeviceModal,
+  projectSettingsModal
 }: AppShellProps) {
   return (
     <div className="postman-app">
@@ -38,6 +40,7 @@ export function AppShell({
       {updateModal}
       {featureTour}
       {bindDeviceModal}
+      {projectSettingsModal}
     </div>
   );
 }

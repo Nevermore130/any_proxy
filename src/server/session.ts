@@ -6,11 +6,11 @@ export const captureSessionHeaderName = "X-Rela-Capture-Session";
 export const unboundCaptureSessionId = "__unbound__";
 
 export type CaptureSessionQrPayload = {
-  type: "rela_capture_session";
+  type: string;
   version: 1;
   relayBaseUrl: string;
   sessionId: string;
-  headerName: typeof captureSessionHeaderName;
+  headerName: string;
 };
 
 export function ensureCaptureSession(request: Request, response: Response): string {
@@ -31,19 +31,26 @@ export function ensureCaptureSession(request: Request, response: Response): stri
 
 export function captureSessionQrPayload(
   relayBaseUrl: string,
-  sessionId: string
+  sessionId: string,
+  options: {
+    type?: string;
+    headerName?: string;
+  } = {}
 ): CaptureSessionQrPayload {
   return {
-    type: "rela_capture_session",
+    type: options.type ?? "rela_capture_session",
     version: 1,
     relayBaseUrl,
     sessionId,
-    headerName: captureSessionHeaderName
+    headerName: options.headerName ?? captureSessionHeaderName
   };
 }
 
-export function captureSessionIdFromHeader(request: Request): string {
-  const value = request.get(captureSessionHeaderName);
+export function captureSessionIdFromHeader(
+  request: Request,
+  headerName = captureSessionHeaderName
+): string {
+  const value = request.get(headerName);
   return sanitizeCaptureSessionId(value) || unboundCaptureSessionId;
 }
 

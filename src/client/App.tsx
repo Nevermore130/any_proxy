@@ -8,6 +8,7 @@ import { FeatureTour } from "./components/FeatureTour.js";
 import { UpdateModal } from "./components/UpdateModal.js";
 import { RulesPanel } from "./components/RulesPanel.js";
 import { BindDeviceModal } from "./components/BindDeviceModal.js";
+import { ProjectSettingsModal } from "./components/ProjectSettingsModal.js";
 import {
   findUnreadEntry,
   isTourCompleted,
@@ -15,6 +16,7 @@ import {
   setLastSeenVersion
 } from "./lib/whatsNewHelpers.js";
 import type {
+  CaptureProject,
   CapturedFlow,
   FlowFilters,
   RequestRule,
@@ -29,6 +31,11 @@ type FlowsResponse = {
 
 type FlowResponse = {
   flow?: CapturedFlow;
+};
+
+type ProjectsResponse = {
+  defaultProjectId?: string;
+  projects?: CaptureProject[];
 };
 
 type BannerState = {
@@ -46,8 +53,13 @@ export function App() {
   const [actionInFlight, setActionInFlight] = useState(false);
   const [flowsLoading, setFlowsLoading] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [projects, setProjects] = useState<CaptureProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    () => localStorage.getItem("relaCaptureProjectId") || "rela"
+  );
   const [rules, setRules] = useState<RequestRule[]>([]);
   const [showRulesPanel, setShowRulesPanel] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [editingRule, setEditingRule] = useState<RequestRule | null>(null);
   const [showBindDeviceModal, setShowBindDeviceModal] = useState(false);
   const [banner, setBanner] = useState<BannerState>({
@@ -60,13 +72,21 @@ export function App() {
   const [showTour, setShowTour] = useState(false);
 
   const selectedIdRef = useRef(selectedId);
+  const selectedProjectIdRef = useRef(selectedProjectId);
   const latestFlowsRequestId = useRef(0);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
-  const exportUrl = "/api/export";
+  useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+    localStorage.setItem("relaCaptureProjectId", selectedProjectId);
+  }, [selectedProjectId]);
+
+  const exportUrl = selectedProjectId
+    ? `/api/export?projectId=${encodeURIComponent(selectedProjectId)}`
+    : "/api/export";
 
   const apiBanner = [banner.statusError, banner.flowsError, banner.eventsError]
     .filter(Boolean)
@@ -76,6 +96,7 @@ export function App() {
     try {
       const nextStatus = await fetchJson<StatusResponse>("/api/status");
       setStatus(nextStatus);
+      syncProjects(nextStatus.projects?.items, nextStatus.projects?.defaultProjectId);
       setPaused(Boolean(nextStatus.capture?.paused));
       setBanner((current) => ({ ...current, statusError: null }));
     } catch (error) {
@@ -119,13 +140,23 @@ export function App() {
     }
   }
 
-  async function loadFlows() {
+  async function loadProjects() {
+    try {
+      const data = await fetchJson<ProjectsResponse>("/api/projects");
+      syncProjects(data.projects, data.defaultProjectId);
+    } catch (error) {
+      console.error("Failed to load projects:", error);
+    }
+  }
+
+  async function loadFlows(projectId = selectedProjectIdRef.current) {
     const requestId = ++latestFlowsRequestId.current;
     setFlowsLoading(true);
     setBanner((current) => ({ ...current, flowsError: null }));
 
     try {
-      const data = await fetchJson<FlowsResponse>("/api/flows");
+      const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+      const data = await fetchJson<FlowsResponse>(`/api/flows${query}`);
       if (requestId !== latestFlowsRequestId.current) {
         return;
       }
@@ -204,7 +235,12 @@ export function App() {
 
   async function clearFlows() {
     await runAction(async () => {
-      await fetchJson("/api/flows/clear", { method: "POST" });
+      await fetchJson(
+        selectedProjectIdRef.current
+          ? `/api/flows/clear?projectId=${encodeURIComponent(selectedProjectIdRef.current)}`
+          : "/api/flows/clear",
+        { method: "POST" }
+      );
       setFlows([]);
       setSelectedId(null);
       setSelectedFlow(null);
@@ -213,6 +249,7 @@ export function App() {
 
   useEffect(() => {
     void loadStatus();
+    void loadProjects();
     void loadRules();
     void loadFlows();
     void checkForUpdates();
@@ -224,6 +261,13 @@ export function App() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    selectedIdRef.current = null;
+    setSelectedId(null);
+    setSelectedFlow(null);
+    void loadFlows(selectedProjectId);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     const events = new EventSource("/api/events");
@@ -254,6 +298,13 @@ export function App() {
 
         if (payload.type === "flow" && payload.flow) {
           const incomingFlow = payload.flow;
+          if (
+            selectedProjectIdRef.current &&
+            incomingFlow.projectId &&
+            incomingFlow.projectId !== selectedProjectIdRef.current
+          ) {
+            return;
+          }
           setFlows((current) => upsertFlowList(current, incomingFlow));
           setSelectedFlow((current) =>
             selectedIdRef.current === incomingFlow.id ? incomingFlow : current
@@ -304,6 +355,21 @@ export function App() {
   };
 
   const [searchValue, setSearchValue] = useState("");
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
+
+  function syncProjects(
+    nextProjects: CaptureProject[] | undefined,
+    defaultProjectId = "rela"
+  ) {
+    if (!Array.isArray(nextProjects) || nextProjects.length === 0) {
+      return;
+    }
+    setProjects(nextProjects);
+    setSelectedProjectId((current) =>
+      nextProjects.some((project) => project.id === current) ? current : defaultProjectId
+    );
+  }
 
   const filteredFlows = useMemo(() => {
     if (!searchValue) {
@@ -345,11 +411,15 @@ export function App() {
           paused={paused}
           actionInFlight={actionInFlight}
           rulesCount={rules.filter((r) => r.enabled).length}
+          projects={projects}
+          selectedProjectId={selectedProjectId}
           exportUrl={exportUrl}
           onTogglePause={() => void togglePause()}
           onClearFlows={() => void clearFlows()}
           onShowRules={() => setShowRulesPanel(!showRulesPanel)}
           onShowBindDevice={() => setShowBindDeviceModal(true)}
+          onShowProjects={() => setShowProjectSettings(true)}
+          onProjectChange={setSelectedProjectId}
         />
       }
       sidebar={
@@ -378,6 +448,19 @@ export function App() {
           />
         ) : null
       }
+      projectSettingsModal={
+        showProjectSettings ? (
+          <ProjectSettingsModal
+            projects={projects}
+            onClose={() => setShowProjectSettings(false)}
+            onProjectsChange={() => {
+              void loadProjects();
+              void loadStatus();
+              void loadFlows();
+            }}
+          />
+        ) : null
+      }
       updateModal={
         showUpdateModal && unreadEntry ? (
           <UpdateModal
@@ -398,7 +481,11 @@ export function App() {
       }
       bindDeviceModal={
         showBindDeviceModal ? (
-          <BindDeviceModal status={status} onClose={() => setShowBindDeviceModal(false)} />
+          <BindDeviceModal
+            project={selectedProject}
+            status={status}
+            onClose={() => setShowBindDeviceModal(false)}
+          />
         ) : null
       }
     />

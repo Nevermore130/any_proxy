@@ -8,8 +8,15 @@ import type { CapturedFlow, HeaderPair, RawBodyEncoding, RawCapturedFlow, Reques
 export type RelayOptions = {
   broadcastFlow: (flow: CapturedFlow) => void;
   allowedTargetHosts?: readonly string[];
+  captureSessionHeaderName?: string;
   hostOriginOverrides?: Record<string, string>;
+  originalHostHeaderName?: string;
   prefix: string;
+  project?: {
+    id: string;
+    name: string;
+    type: string;
+  };
   store: FlowStore;
   ruleStore?: RuleStore;
   targetOrigin: string;
@@ -57,6 +64,8 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
   const targetOrigin = normalizeTargetOrigin(options.targetOrigin);
   const allowedTargetHosts = normalizedAllowedTargetHosts(options.allowedTargetHosts);
   const hostOriginOverrides = normalizedHostOriginOverrides(options.hostOriginOverrides);
+  const sessionHeaderName = options.captureSessionHeaderName ?? captureSessionHeaderName;
+  const originalHostHeaderName = options.originalHostHeaderName ?? relayOriginalHostHeaderName;
 
   return async (request, response) => {
     const startedAt = Date.now();
@@ -64,16 +73,17 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
       request,
       targetOrigin,
       allowedTargetHosts,
-      hostOriginOverrides
+      hostOriginOverrides,
+      originalHostHeaderName
     );
     const targetUrl = createTargetUrl(request, options.prefix, requestTargetOrigin);
     const requestBody = requestBodyBuffer(request);
     const requestHeaders = headerPairs(request.headers);
 
     const target = new URL(targetUrl);
-    const captureSessionId = captureSessionIdFromHeader(request);
+    const captureSessionId = captureSessionIdFromHeader(request, sessionHeaderName);
 
-    const originalHost = originalRequestHostname(request);
+    const originalHost = originalRequestHostname(request, originalHostHeaderName);
     const matchedRule = options.ruleStore?.findMatchingRule(
       request.method,
       target.pathname + target.search,
@@ -92,7 +102,10 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
       } else {
         const upstreamResponse = await fetch(targetUrl, {
           method: request.method,
-          headers: upstreamRequestHeaders(request),
+          headers: upstreamRequestHeaders(request, [
+            originalHostHeaderName,
+            sessionHeaderName
+          ]),
           body: methodAllowsBody(request.method) ? new Uint8Array(requestBody) : undefined,
           redirect: "manual"
         });
@@ -128,6 +141,7 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
         durationMs: Date.now() - startedAt,
         matchedRule,
         method: request.method,
+        project: options.project,
         requestBody,
         requestHeaders,
         responseBody,
@@ -148,6 +162,7 @@ export function createRelayHandler(options: RelayOptions): RequestHandler {
         error: `Relay request failed: ${message}`,
         matchedRule,
         method: request.method,
+        project: options.project,
         requestBody,
         requestHeaders,
         responseBody,
@@ -199,9 +214,10 @@ function relayTargetOriginForRequest(
   request: Request,
   fallbackTargetOrigin: string,
   allowedTargetHosts: Set<string>,
-  hostOriginOverrides: Map<string, string>
+  hostOriginOverrides: Map<string, string>,
+  originalHostHeaderName = relayOriginalHostHeaderName
 ): string {
-  const originalHost = originalRequestHostname(request);
+  const originalHost = originalRequestHostname(request, originalHostHeaderName);
   if (!originalHost || !allowedTargetHosts.has(originalHost)) {
     return fallbackTargetOrigin;
   }
@@ -212,8 +228,11 @@ function relayTargetOriginForRequest(
   );
 }
 
-function originalRequestHostname(request: Request): string | undefined {
-  const originalHostHeader = request.headers[relayOriginalHostHeaderName.toLowerCase()];
+function originalRequestHostname(
+  request: Request,
+  headerName = relayOriginalHostHeaderName
+): string | undefined {
+  const originalHostHeader = request.headers[headerName.toLowerCase()];
   const originalHost = Array.isArray(originalHostHeader)
     ? originalHostHeader[0]
     : originalHostHeader;
@@ -249,11 +268,15 @@ function methodAllowsBody(method: string): boolean {
   return normalized !== "GET" && normalized !== "HEAD";
 }
 
-function upstreamRequestHeaders(request: Request): Headers {
+function upstreamRequestHeaders(request: Request, relayHeaderNames: string[]): Headers {
   const headers = new Headers();
+  const headersToDrop = new Set([
+    ...REQUEST_HEADERS_TO_DROP,
+    ...relayHeaderNames.map((name) => name.toLowerCase())
+  ]);
   for (const [name, value] of Object.entries(request.headers)) {
     const normalized = name.toLowerCase();
-    if (REQUEST_HEADERS_TO_DROP.has(normalized) || value === undefined) {
+    if (headersToDrop.has(normalized) || value === undefined) {
       continue;
     }
 
@@ -309,6 +332,11 @@ function recordRelayFlow(
     error?: string;
     matchedRule?: RequestRule;
     method: string;
+    project?: {
+      id: string;
+      name: string;
+      type: string;
+    };
     requestBody: Buffer;
     requestHeaders: HeaderPair[];
     responseBody: Buffer;
@@ -339,6 +367,9 @@ function recordRelayFlow(
     startedAtEpochMs: details.startedAtEpochMs,
     durationMs: details.durationMs,
     protocol: details.target.protocol === "https:" ? "https" : "http",
+    projectId: details.project?.id,
+    projectName: details.project?.name,
+    projectType: details.project?.type,
     method: details.method,
     scheme: details.target.protocol.replace(":", ""),
     host: details.target.hostname,

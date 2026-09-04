@@ -9,6 +9,10 @@ export function flowMatchesFilters(flow: CapturedFlow, filters: FlowFilters): bo
     return false;
   }
 
+  if (filters.projectId && flow.projectId !== filters.projectId) {
+    return false;
+  }
+
   if (filters.protocol && filters.protocol !== "all" && flow.protocol !== filters.protocol) {
     return false;
   }
