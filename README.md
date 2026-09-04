@@ -243,18 +243,85 @@ Rules are evaluated in order (first matching enabled rule wins):
 
 Rules are persisted to disk in `data/rules.json` and survive service restarts.
 
+## What's New / Release Notes
+
+Rela Capture includes a "What's New" update notification system that shows users release notes after a deployment. When a new version is deployed with release notes, users will see an update modal on their first dashboard visit.
+
+### Adding Release Notes for a New Version
+
+1. Edit `src/client/whats-new.json`
+2. Add a new entry to the array with the following structure:
+
+```json
+{
+  "version": "0.2.0",
+  "title": "New Feature Title",
+  "publishedAt": "2026-09-15",
+  "showModal": true,
+  "body": [
+    "First feature or improvement",
+    "Second feature or improvement",
+    "Third feature or improvement"
+  ],
+  "tour": [
+    {
+      "id": "feature-button",
+      "targetSelector": "[data-tour='feature-button']",
+      "title": "Feature Button",
+      "body": "Click here to use the new feature"
+    }
+  ]
+}
+```
+
+3. Update `package.json` version to match the new release version
+4. Deploy the updated service
+
+### Release Notes Format
+
+- **version**: Semantic version string (e.g., `"0.2.0"`)
+- **title**: Short title describing the release
+- **publishedAt**: ISO date string
+- **showModal**: Set to `true` to show the update modal, or `false` for silent updates
+- **body**: Array of strings, each describing a feature or change (shown as bullet points)
+- **tour** (optional): Array of interactive tour steps to guide users through new features
+
+### Tour Steps
+
+Each tour step requires:
+- **id**: Unique identifier for the step
+- **targetSelector**: CSS selector for the UI element to highlight (use `data-tour` attributes)
+- **title**: Tour step title
+- **body**: Description of the feature
+
+Add `data-tour` attributes to UI elements you want to highlight:
+
+```tsx
+<button data-tour="my-feature-button">
+  My Feature
+</button>
+```
+
+### Version Tracking
+
+The system tracks which versions users have seen using `localStorage`:
+- When a user dismisses the modal or completes a tour, that version is marked as seen
+- Users will only see the latest unread version's notes
+- Versions without `showModal: true` will not trigger the update modal
+
 Useful API endpoints:
 
-- `GET /api/status`
-- `GET /api/flows`
-- `GET /api/flows/:id`
-- `GET /api/events`
-- `POST /api/capture/pause`
-- `POST /api/capture/resume`
-- `POST /api/flows/clear`
-- `GET /api/export`
-- `GET /api/rules`
-- `POST /api/rules`
-- `PATCH /api/rules/:id`
-- `DELETE /api/rules/:id`
-- `ANY /relay/rela/*`
+- `GET /api/status` - Returns system status and current version
+- `GET /api/flows` - List captured flows
+- `GET /api/flows/:id` - Get flow details
+- `GET /api/events` - SSE stream of live updates
+- `POST /api/capture/pause` - Pause capture
+- `POST /api/capture/resume` - Resume capture
+- `POST /api/flows/clear` - Clear all flows
+- `GET /api/export` - Export flows as JSON
+- `GET /api/rules` - List all rules
+- `POST /api/rules` - Create a new rule
+- `PATCH /api/rules/:id` - Update a rule
+- `DELETE /api/rules/:id` - Delete a rule
+- `GET /api/whats-new` - Get what's new entries
+- `ANY /relay/rela/*` - Relay endpoint

@@ -1,0 +1,28 @@
+[
+  {
+    "version": "0.1.0",
+    "title": "请求规则功能上线",
+    "publishedAt": "2026-09-04",
+    "showModal": true,
+    "body": [
+      "新增请求拦截规则系统，支持灵活配置",
+      "支持路径前缀匹配和通配符模式",
+      "可配置延迟、状态码改写、响应体改写",
+      "支持 Mock 模式，无需真实请求即可返回测试数据"
+    ],
+    "tour": [
+      {
+        "id": "rules-button",
+        "targetSelector": "[data-tour='rules-button']",
+        "title": "规则面板入口",
+        "body": "点击此处打开请求规则管理面板，可以创建、编辑和管理拦截规则"
+      },
+      {
+        "id": "create-rule-from-flow",
+        "targetSelector": "[data-tour='create-rule-button']",
+        "title": "快速创建规则",
+        "body": "选中请求后，点击「New Rule」按钮可以基于当前请求快速创建规则"
+      }
+    ]
+  }
+]

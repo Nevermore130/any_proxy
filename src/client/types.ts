@@ -44,6 +44,7 @@ export type FlowFilters = {
 };
 
 export type StatusResponse = {
+  version?: string;
   capture?: {
     paused?: boolean;
   };
@@ -64,6 +65,26 @@ export type StatusResponse = {
       targetOrigin?: string;
     };
   };
+};
+
+export type WhatsNewTourStep = {
+  id: string;
+  targetSelector: string;
+  title: string;
+  body: string;
+};
+
+export type WhatsNewEntry = {
+  version: string;
+  title: string;
+  publishedAt: string;
+  showModal: boolean;
+  body: string[];
+  tour?: WhatsNewTourStep[];
+};
+
+export type WhatsNewResponse = {
+  entries: WhatsNewEntry[];
 };
 
 export type RequestRule = {
