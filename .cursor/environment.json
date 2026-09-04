@@ -1,0 +1,16 @@
+{
+  "name": "Rela Capture",
+  "install": "npm ci && npm run build:client",
+  "terminals": [
+    {
+      "name": "dev-server",
+      "command": "npm run dev"
+    }
+  ],
+  "ports": [
+    {
+      "name": "dashboard",
+      "port": 5177
+    }
+  ]
+}
