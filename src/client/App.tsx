@@ -7,6 +7,7 @@ import { ResponsePane } from "./components/ResponsePane.js";
 import { FeatureTour } from "./components/FeatureTour.js";
 import { UpdateModal } from "./components/UpdateModal.js";
 import { RulesPanel } from "./components/RulesPanel.js";
+import { BindDeviceModal } from "./components/BindDeviceModal.js";
 import {
   findUnreadEntry,
   isTourCompleted,
@@ -48,6 +49,7 @@ export function App() {
   const [rules, setRules] = useState<RequestRule[]>([]);
   const [showRulesPanel, setShowRulesPanel] = useState(false);
   const [editingRule, setEditingRule] = useState<RequestRule | null>(null);
+  const [showBindDeviceModal, setShowBindDeviceModal] = useState(false);
   const [banner, setBanner] = useState<BannerState>({
     eventsError: null,
     flowsError: null,
@@ -347,6 +349,7 @@ export function App() {
           onTogglePause={() => void togglePause()}
           onClearFlows={() => void clearFlows()}
           onShowRules={() => setShowRulesPanel(!showRulesPanel)}
+          onShowBindDevice={() => setShowBindDeviceModal(true)}
         />
       }
       sidebar={
@@ -391,6 +394,11 @@ export function App() {
             onComplete={handleCompleteTour}
             onSkip={handleSkipTour}
           />
+        ) : null
+      }
+      bindDeviceModal={
+        showBindDeviceModal ? (
+          <BindDeviceModal status={status} onClose={() => setShowBindDeviceModal(false)} />
         ) : null
       }
     />
