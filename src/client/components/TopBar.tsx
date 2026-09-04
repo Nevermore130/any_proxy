@@ -3,6 +3,7 @@ import { PauseIcon } from "@phosphor-icons/react/dist/csr/Pause";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
+import { DeviceMobileIcon } from "@phosphor-icons/react/dist/csr/DeviceMobile";
 import type { StatusResponse } from "../types.js";
 
 type TopBarProps = {
@@ -14,6 +15,7 @@ type TopBarProps = {
   onTogglePause: () => void;
   onClearFlows: () => void;
   onShowRules: () => void;
+  onShowBindDevice: () => void;
 };
 
 export function TopBar({
@@ -24,7 +26,8 @@ export function TopBar({
   exportUrl,
   onTogglePause,
   onClearFlows,
-  onShowRules
+  onShowRules,
+  onShowBindDevice
 }: TopBarProps) {
   const captureSessionId = status?.session?.id || "";
 
@@ -49,6 +52,15 @@ export function TopBar({
       </div>
 
       <div className="postman-topbar__right">
+        <button
+          className="postman-btn postman-btn--secondary postman-btn--bind"
+          type="button"
+          onClick={onShowBindDevice}
+          title="绑定设备 - 扫描二维码连接 Rela App"
+        >
+          <DeviceMobileIcon size={16} weight="bold" />
+          绑定设备
+        </button>
         <button
           className="postman-btn postman-btn--secondary"
           type="button"
