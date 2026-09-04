@@ -22,6 +22,7 @@ import {
   useState
 } from "react";
 import { bodyCopyButtonState, bodyCopyText } from "./lib/bodyActions.js";
+import { JsonBodyEditor } from "./components/JsonBodyEditor.js";
 import { curlCommandForFlow, flowRequestUrl } from "./lib/curlCommand.js";
 import { detailTabButtonState, type DetailTabId } from "./lib/detailTabs.js";
 import { parseJsonBodyPreview, summarizeJsonValue } from "./lib/jsonBody.js";
@@ -1723,11 +1724,12 @@ function RuleEditor({
             </label>
             <label>
               <span>Mock Body</span>
-              <textarea
+              <JsonBodyEditor
                 value={mockBody}
-                onChange={(e) => setMockBody(e.target.value)}
+                onChange={setMockBody}
                 placeholder='{"message": "mocked"}'
                 rows={4}
+                label="Mock Body"
               />
             </label>
           </>
@@ -1744,11 +1746,12 @@ function RuleEditor({
             </label>
             <label>
               <span>Rewrite Body JSON (merge, optional)</span>
-              <textarea
+              <JsonBodyEditor
                 value={rewriteBodyJson}
-                onChange={(e) => setRewriteBodyJson(e.target.value)}
+                onChange={setRewriteBodyJson}
                 placeholder='{"field": "value"}'
                 rows={4}
+                label="Rewrite Body JSON"
               />
             </label>
           </>
