@@ -337,8 +337,17 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
 
   app.get("/api/whats-new", async (_request, response) => {
     try {
-      const whatsNewPath = path.join(rootDir, "src", "client", "whats-new.json");
-      const content = await readFile(whatsNewPath, "utf-8");
+      // Try production path first (dist/whats-new.json), fallback to dev path (src/client/whats-new.json)
+      const productionPath = path.join(rootDir, "dist", "whats-new.json");
+      const devPath = path.join(rootDir, "src", "client", "whats-new.json");
+      
+      let content: string;
+      try {
+        content = await readFile(productionPath, "utf-8");
+      } catch {
+        content = await readFile(devPath, "utf-8");
+      }
+      
       const whatsNew = JSON.parse(content);
       response.json({ entries: whatsNew });
     } catch (error) {
