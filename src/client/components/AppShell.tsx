@@ -5,6 +5,7 @@ type AppShellProps = {
   sidebar: ReactNode;
   requestPane: ReactNode;
   responsePane: ReactNode;
+  main?: ReactNode;
   rulesPanel?: ReactNode;
   updateModal?: ReactNode;
   featureTour?: ReactNode;
@@ -18,6 +19,7 @@ export function AppShell({
   sidebar,
   requestPane,
   responsePane,
+  main,
   rulesPanel,
   updateModal,
   featureTour,
@@ -32,8 +34,14 @@ export function AppShell({
       <div className="postman-layout">
         {sidebar}
         <div className="postman-main">
-          <div className="postman-request-section">{requestPane}</div>
-          <div className="postman-response-section">{responsePane}</div>
+          {main ? (
+            main
+          ) : (
+            <>
+              <div className="postman-request-section">{requestPane}</div>
+              <div className="postman-response-section">{responsePane}</div>
+            </>
+          )}
         </div>
       </div>
       {rulesPanel}

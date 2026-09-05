@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./components/AppShell.js";
 import { TopBar } from "./components/TopBar.js";
-import { Sidebar } from "./components/Sidebar.js";
+import { Sidebar, type SidebarView } from "./components/Sidebar.js";
 import { RequestPane } from "./components/RequestPane.js";
 import { ResponsePane } from "./components/ResponsePane.js";
+import { InsightsPanel } from "./components/InsightsPanel.js";
 import { FeatureTour } from "./components/FeatureTour.js";
 import { UpdateModal } from "./components/UpdateModal.js";
 import { RulesPanel } from "./components/RulesPanel.js";
@@ -70,6 +71,7 @@ export function App() {
   const [unreadEntry, setUnreadEntry] = useState<WhatsNewEntry | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [sidebarView, setSidebarView] = useState<SidebarView>("traffic");
 
   const selectedIdRef = useRef(selectedId);
   const selectedProjectIdRef = useRef(selectedProjectId);
@@ -429,10 +431,21 @@ export function App() {
           onSelect={(id) => void showDetails(id)}
           searchValue={searchValue}
           onSearchChange={setSearchValue}
+          activeView={sidebarView}
+          onSelectView={setSidebarView}
         />
       }
       requestPane={<RequestPane flow={selectedFlow} onCreateRule={handleCreateRule} />}
       responsePane={<ResponsePane flow={selectedFlow} />}
+      main={
+        sidebarView === "insights" ? (
+          <InsightsPanel
+            projectId={selectedProjectId}
+            projectName={selectedProject?.name}
+            refreshNonce={`${flows.length}:${flows[0]?.id ?? ""}:${flows[0]?.startedAt ?? ""}`}
+          />
+        ) : undefined
+      }
       banner={apiBanner ? <span>{apiBanner}</span> : null}
       rulesPanel={
         showRulesPanel ? (

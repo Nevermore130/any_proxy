@@ -674,6 +674,121 @@ describe("createApp", () => {
     expect(withValidPath.body.flows.map((flow: { id: string }) => flow.id)).toEqual(["flow-1"]);
   });
 
+  it("aggregates session-scoped traffic insights from retained flows", async () => {
+    const store = new FlowStore({ maxFlows: 20, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
+    const now = Date.now();
+    store.ingest({
+      eventType: "response",
+      flow: createRawFlow({
+        id: "flow-ok",
+        path: "/accounts/99/cards?debug=1",
+        statusCode: 200,
+        durationMs: 80,
+        startedAtEpochMs: now - 60_000,
+        projectId: "rela"
+      })
+    });
+    store.ingest({
+      eventType: "response",
+      flow: createRawFlow({
+        id: "flow-err",
+        path: "/accounts/12/cards",
+        statusCode: 500,
+        durationMs: 180,
+        startedAtEpochMs: now - 30_000,
+        projectId: "rela"
+      })
+    });
+    store.ingest({
+      eventType: "response",
+      flow: createRawFlow({
+        id: "flow-other-project",
+        path: "/demo/ping",
+        statusCode: 200,
+        durationMs: 20,
+        startedAtEpochMs: now - 10_000,
+        projectId: "demo"
+      })
+    });
+
+    const app = createApp({
+      store,
+      ruleStore,
+      lanAddresses: [],
+      dashboardPort: 5177
+    });
+    const browser = request.agent(app);
+
+    const all = await browser.get("/api/insights?window=1h").expect(200);
+    expect(all.body.window).toBe("1h");
+    expect(all.body.flowCount).toBe(3);
+    expect(all.body.systemHealth.totalRequests.value).toBe(3);
+    expect(all.body.systemHealth.errors.value).toBe(1);
+    expect(all.body.endpointHealth.mostErrors[0]).toMatchObject({
+      method: "GET",
+      path: "/accounts/{id}/cards",
+      errorCount: 1
+    });
+
+    const projectScoped = await browser.get("/api/insights?window=1h&projectId=rela").expect(200);
+    expect(projectScoped.body.flowCount).toBe(2);
+    expect(projectScoped.body.retainedCount).toBe(2);
+
+    const invalidWindow = await browser.get("/api/insights?window=week").expect(200);
+    expect(invalidWindow.body.window).toBe("1h");
+  });
+
+  it("keeps insights scoped to the dashboard capture session", async () => {
+    const store = new FlowStore({ maxFlows: 20, bodyPreviewBytes: 1024 });
+    const ruleStore = new RuleStore();
+    const app = createApp({
+      store,
+      ruleStore,
+      lanAddresses: [],
+      dashboardPort: 5177
+    });
+    const firstBrowser = request.agent(app);
+    const secondBrowser = request.agent(app);
+    const firstSession = (await firstBrowser.get("/api/status").expect(200)).body.session.id as string;
+    const secondSession = (await secondBrowser.get("/api/status").expect(200)).body.session
+      .id as string;
+    const now = Date.now();
+
+    store.ingest({
+      eventType: "response",
+      flow: createRawFlow({
+        id: "owned",
+        captureSessionId: firstSession,
+        path: "/v1/first",
+        statusCode: 500,
+        durationMs: 90,
+        startedAtEpochMs: now - 5_000
+      })
+    });
+    store.ingest({
+      eventType: "response",
+      flow: createRawFlow({
+        id: "other",
+        captureSessionId: secondSession,
+        path: "/v1/second",
+        statusCode: 200,
+        durationMs: 40,
+        startedAtEpochMs: now - 4_000
+      })
+    });
+
+    const firstInsights = await firstBrowser.get("/api/insights?window=all").expect(200);
+    const secondInsights = await secondBrowser.get("/api/insights?window=all").expect(200);
+
+    expect(firstInsights.body.flowCount).toBe(1);
+    expect(firstInsights.body.systemHealth.errors.value).toBe(1);
+    expect(firstInsights.body.endpointHealth.busiest[0].path).toBe("/v1/first");
+    expect(secondInsights.body.flowCount).toBe(1);
+    expect(secondInsights.body.systemHealth.errors.value).toBe(0);
+    expect(secondInsights.body.endpointHealth.busiest[0].path).toBe("/v1/second");
+  });
+
   it("returns 404 for missing flows", async () => {
     const store = new FlowStore({ maxFlows: 10, bodyPreviewBytes: 1024 });
     const ruleStore = new RuleStore();

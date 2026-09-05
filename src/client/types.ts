@@ -110,6 +110,46 @@ export type WhatsNewResponse = {
   entries: WhatsNewEntry[];
 };
 
+export type InsightsWindow = "15m" | "1h" | "24h" | "all";
+
+export type InsightsMetric = {
+  value: number | null;
+  previousValue: number | null;
+  changePercent: number | null;
+  sparkline: number[];
+  previousSparkline: number[];
+};
+
+export type InsightsEndpoint = {
+  method: string;
+  path: string;
+  requestCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgLatencyMs: number | null;
+  p90LatencyMs: number | null;
+};
+
+export type InsightsOverview = {
+  window: InsightsWindow;
+  windowMs: number | null;
+  generatedAt: string;
+  from: string | null;
+  to: string;
+  flowCount: number;
+  retainedCount: number;
+  systemHealth: {
+    totalRequests: InsightsMetric;
+    p90LatencyMs: InsightsMetric;
+    errors: InsightsMetric;
+  };
+  endpointHealth: {
+    monitoredCount: number;
+    mostErrors: InsightsEndpoint[];
+    busiest: InsightsEndpoint[];
+  };
+};
+
 export type RequestRule = {
   id: string;
   name: string;

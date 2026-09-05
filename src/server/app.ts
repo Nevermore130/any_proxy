@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 import { FlowStore } from "./flowStore.js";
+import { aggregateInsights, parseInsightsWindow } from "./insights.js";
 import type { LanAddress } from "./lan.js";
 import { ProjectStore, type CaptureProject } from "./projectStore.js";
 import { createRelayHandler, relayAllowedTargetHosts } from "./relay.js";
@@ -304,6 +305,16 @@ function createExpressApp(options: CreateAppOptions, eventHub: EventHub): Expres
     response.json({
       flows: options.store.listFlows(filtersFromQuery(request.query), captureSessionId)
     });
+  });
+
+  app.get("/api/insights", (request, response) => {
+    const captureSessionId = ensureCaptureSession(request, response);
+    const flows = options.store.listFlows(filtersFromQuery(request.query), captureSessionId);
+    response.json(
+      aggregateInsights(flows, {
+        window: parseInsightsWindow(request.query.window)
+      })
+    );
   });
 
   app.get("/api/flows/:id", (request, response) => {
