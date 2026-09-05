@@ -1899,6 +1899,22 @@ button, input, select, textarea {
   background: #F8FAFC;
 }
 
+.insights-sample-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.insights-sample-error {
+  max-width: 220px;
+  overflow: hidden;
+  color: #B91C1C;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .insights-sparkline {
   display: block;
   width: 100%;

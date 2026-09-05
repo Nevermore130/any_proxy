@@ -555,11 +555,14 @@ function ErrorSampleTable({
                   <EndpointCell method={row.method} path={row.path} />
                 </td>
                 <td>
-                  <span
-                    className={`postman-status-badge postman-status-badge--${statusClass(row.statusCode, row.error)}`}
-                  >
-                    {row.statusCode ?? (row.error ? "ERR" : "—")}
-                  </span>
+                  <div className="insights-sample-status">
+                    <span
+                      className={`postman-status-badge postman-status-badge--${statusClass(row.statusCode, row.error)}`}
+                    >
+                      {row.statusCode ?? (row.error ? "ERR" : "—")}
+                    </span>
+                    {row.error ? <span className="insights-sample-error">{row.error}</span> : null}
+                  </div>
                 </td>
                 <td>{formatRelativeTime(row.startedAt)}</td>
               </tr>
