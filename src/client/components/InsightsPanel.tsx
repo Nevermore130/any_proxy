@@ -257,10 +257,12 @@ function EndpointTable({
             {rows.map((row) => (
               <tr key={`${row.method} ${row.path}`}>
                 <td>
-                  <span className={`postman-method-badge postman-method-badge--${row.method.toLowerCase()}`}>
-                    {row.method}
-                  </span>
-                  <code>{row.path}</code>
+                  <div className="insights-endpoint">
+                    <span className={`postman-method-badge postman-method-badge--${row.method.toLowerCase()}`}>
+                      {row.method}
+                    </span>
+                    <code>{row.path}</code>
+                  </div>
                 </td>
                 <td>{formatCount(primary === "errors" ? row.errorCount : row.requestCount)}</td>
                 <td>{formatRate(row.errorRate)}</td>
