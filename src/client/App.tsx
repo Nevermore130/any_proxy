@@ -443,6 +443,10 @@ export function App() {
             projectId={selectedProjectId}
             projectName={selectedProject?.name}
             refreshNonce={`${flows.length}:${flows[0]?.id ?? ""}:${flows[0]?.startedAt ?? ""}`}
+            onOpenFlow={(flowId) => {
+              setSidebarView("traffic");
+              void showDetails(flowId);
+            }}
           />
         ) : undefined
       }

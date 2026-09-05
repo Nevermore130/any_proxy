@@ -731,6 +731,15 @@ describe("createApp", () => {
       errorCount: 1
     });
 
+    expect(all.body.collectionHealth.totalRuns.value).toBe(3);
+    expect(all.body.collectionHealth.passRate.value).toBeCloseTo((2 / 3) * 100);
+    expect(all.body.errors.recentSamples[0]).toMatchObject({
+      id: "flow-err",
+      statusCode: 500,
+      path: "/accounts/12/cards"
+    });
+    expect(all.body.latency.slowest[0].path).toBe("/accounts/{id}/cards");
+
     const projectScoped = await browser.get("/api/insights?window=1h&projectId=rela").expect(200);
     expect(projectScoped.body.flowCount).toBe(2);
     expect(projectScoped.body.retainedCount).toBe(2);
