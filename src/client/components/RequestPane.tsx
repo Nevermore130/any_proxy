@@ -4,19 +4,24 @@ import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindo
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import type { CapturedFlow } from "../types.js";
 import { curlCommandForFlow, flowRequestUrl } from "../lib/curlCommand.js";
-import { parseJsonBodyPreview, summarizeJsonValue } from "../lib/jsonBody.js";
+import { parseJsonBodyPreview } from "../lib/jsonBody.js";
 import { bodyCopyText } from "../lib/bodyActions.js";
+import {
+  defaultRequestPaneTab,
+  isFormUrlEncodedBody,
+  parseQueryString,
+  queryStringFromFlow,
+  shouldHideRequestBody,
+  type QueryParam,
+  type RequestPaneTabId
+} from "../lib/queryParams.js";
 
 type RequestPaneProps = {
   flow: CapturedFlow | null;
   onCreateRule?: (flow: CapturedFlow) => void;
 };
 
-type TabId = "params" | "headers" | "body";
-
 export function RequestPane({ flow, onCreateRule }: RequestPaneProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("headers");
-
   if (!flow) {
     return (
       <div className="postman-empty-pane">
@@ -34,7 +39,22 @@ export function RequestPane({ flow, onCreateRule }: RequestPaneProps) {
     );
   }
 
+  return <RequestPaneContent key={flow.id} flow={flow} onCreateRule={onCreateRule} />;
+}
+
+function RequestPaneContent({
+  flow,
+  onCreateRule
+}: {
+  flow: CapturedFlow;
+  onCreateRule?: (flow: CapturedFlow) => void;
+}) {
   const requestUrl = flowRequestUrl(flow);
+  const rawQuery = queryStringFromFlow(flow);
+  const queryParams = parseQueryString(rawQuery);
+  const [activeTab, setActiveTab] = useState<RequestPaneTabId>(() =>
+    defaultRequestPaneTab(queryParams.length)
+  );
 
   return (
     <div className="postman-request-pane">
@@ -78,7 +98,7 @@ export function RequestPane({ flow, onCreateRule }: RequestPaneProps) {
           className={`postman-tab ${activeTab === "params" ? "postman-tab--active" : ""}`}
           onClick={() => setActiveTab("params")}
         >
-          Params
+          Params ({queryParams.length})
         </button>
         <button
           type="button"
@@ -98,13 +118,21 @@ export function RequestPane({ flow, onCreateRule }: RequestPaneProps) {
 
       <div className="postman-tab-content">
         {activeTab === "params" && (
-          <div className="postman-params-view">
-            <p className="postman-muted">Query parameters will be shown here</p>
-          </div>
+          <EncodedPairView
+            emptyMessage="This request has no query parameters"
+            pairs={queryParams}
+            raw={rawQuery}
+            rawLabel="Raw"
+          />
         )}
         {activeTab === "headers" && <HeadersView headers={flow.requestHeaders} />}
         {activeTab === "body" && (
-          <BodyView body={flow.requestBodyPreview} label="Request Body" />
+          <BodyView
+            body={flow.requestBodyPreview}
+            label="Request Body"
+            method={flow.method}
+            queryString={rawQuery}
+          />
         )}
       </div>
     </div>
@@ -117,29 +145,28 @@ function HeadersView({ headers }: { headers: Array<[string, string]> | undefined
   }
 
   return (
-    <div className="postman-headers-table">
-      <div className="postman-headers-row postman-headers-row--header">
-        <div className="postman-headers-cell">Key</div>
-        <div className="postman-headers-cell">Value</div>
-      </div>
-      {headers.map(([name, value]) => (
-        <div key={`${name}:${value}`} className="postman-headers-row">
-          <div className="postman-headers-cell postman-headers-cell--key">{name}</div>
-          <div className="postman-headers-cell postman-headers-cell--value">{value}</div>
-        </div>
-      ))}
-    </div>
+    <KeyValueTable
+      rows={headers.map(([name, value]) => ({
+        key: name,
+        title: `${name}: ${value}`,
+        value
+      }))}
+    />
   );
 }
 
 function BodyView({
   body,
-  label
+  label,
+  method,
+  queryString
 }: {
   body: CapturedFlow["requestBodyPreview"];
   label: string;
+  method?: string;
+  queryString: string;
 }) {
-  if (!body || body.kind === "empty") {
+  if (shouldHideRequestBody(method, body, queryString)) {
     return <p className="postman-muted">No {label.toLowerCase()} captured</p>;
   }
 
@@ -154,10 +181,129 @@ function BodyView({
     );
   }
 
+  if (isFormUrlEncodedBody(body, rawText)) {
+    return (
+      <EncodedPairView
+        emptyMessage={`No ${label.toLowerCase()} captured`}
+        pairs={parseQueryString(rawText)}
+        raw={rawText.replace(/^\?/, "")}
+        rawLabel="Raw"
+      />
+    );
+  }
+
   return (
     <div className="postman-body-viewer">
       <pre className="postman-code-block">{rawText}</pre>
     </div>
+  );
+}
+
+function EncodedPairView({
+  emptyMessage,
+  pairs,
+  raw,
+  rawLabel
+}: {
+  emptyMessage: string;
+  pairs: QueryParam[];
+  raw: string;
+  rawLabel: string;
+}) {
+  if (pairs.length === 0 && !raw) {
+    return <p className="postman-muted">{emptyMessage}</p>;
+  }
+
+  return (
+    <div className="postman-kv-view">
+      {pairs.length > 0 ? (
+        <KeyValueTable
+          rows={pairs.map((param, index) => ({
+            key: param.key,
+            title: `${param.rawKey}=${param.rawValue}`,
+            value: param.value,
+            wrap: true,
+            rowKey: `${param.rawKey}:${param.rawValue}:${index}`
+          }))}
+        />
+      ) : (
+        <p className="postman-muted">{emptyMessage}</p>
+      )}
+      {raw ? <RawStringView label={rawLabel} text={raw} /> : null}
+    </div>
+  );
+}
+
+function KeyValueTable({
+  rows
+}: {
+  rows: Array<{ key: string; rowKey?: string; title?: string; value: string; wrap?: boolean }>;
+}) {
+  return (
+    <div className="postman-headers-table">
+      <div className="postman-headers-row postman-headers-row--header">
+        <div className="postman-headers-cell">Key</div>
+        <div className="postman-headers-cell">Value</div>
+      </div>
+      {rows.map((row, index) => (
+        <div key={row.rowKey ?? `${row.key}:${row.value}:${index}`} className="postman-headers-row">
+          <div className="postman-headers-cell postman-headers-cell--key" title={row.title || row.key}>
+            {row.key}
+          </div>
+          <div
+            className={`postman-headers-cell postman-headers-cell--value${row.wrap ? " postman-headers-cell--wrap" : ""}`}
+            title={row.title || row.value}
+          >
+            {row.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RawStringView({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="postman-raw-block">
+      <div className="postman-raw-block__header">
+        <div className="postman-raw-block__title">{label}</div>
+        <CopyTextButton text={text} />
+      </div>
+      <pre className="postman-code-block">{text}</pre>
+    </div>
+  );
+}
+
+function CopyTextButton({ text }: { text: string }) {
+  const [labelText, setLabelText] = useState("Copy");
+  const [failed, setFailed] = useState(false);
+
+  async function copy() {
+    try {
+      await copyText(text);
+      setLabelText("Copied");
+      setFailed(false);
+    } catch {
+      setLabelText("Failed");
+      setFailed(true);
+    } finally {
+      window.setTimeout(() => {
+        setLabelText("Copy");
+        setFailed(false);
+      }, 1200);
+    }
+  }
+
+  return (
+    <button
+      className={`postman-btn postman-btn--secondary postman-btn--sm ${failed ? "postman-btn--error" : ""}`}
+      type="button"
+      onClick={() => void copy()}
+      disabled={!text}
+    >
+      <CopySimpleIcon size={14} weight="bold" />
+      {labelText}
+    </button>
   );
 }
 

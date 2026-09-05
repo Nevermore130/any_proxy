@@ -639,6 +639,39 @@ button, input, select, textarea {
   color: var(--postman-text-secondary);
 }
 
+.postman-headers-cell--wrap {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: visible;
+}
+
+.postman-kv-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.postman-raw-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.postman-raw-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.postman-raw-block__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--postman-text-secondary);
+}
+
 /* Code Block */
 .postman-code-block {
   margin: 0;
