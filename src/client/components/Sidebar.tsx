@@ -1,7 +1,10 @@
 import { GlobeSimpleIcon } from "@phosphor-icons/react/dist/csr/GlobeSimple";
 import { FolderIcon } from "@phosphor-icons/react/dist/csr/Folder";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
+import { ChartLineIcon } from "@phosphor-icons/react/dist/csr/ChartLine";
 import type { CapturedFlow } from "../types.js";
+
+export type SidebarView = "traffic" | "insights";
 
 type SidebarProps = {
   flows: CapturedFlow[];
@@ -9,6 +12,8 @@ type SidebarProps = {
   onSelect: (id: string) => void;
   searchValue: string;
   onSearchChange: (value: string) => void;
+  activeView: SidebarView;
+  onSelectView: (view: SidebarView) => void;
 };
 
 export function Sidebar({
@@ -16,7 +21,9 @@ export function Sidebar({
   selectedId,
   onSelect,
   searchValue,
-  onSearchChange
+  onSearchChange,
+  activeView,
+  onSelectView
 }: SidebarProps) {
   return (
     <div className="postman-sidebar">
@@ -32,11 +39,31 @@ export function Sidebar({
 
       <div className="postman-sidebar__nav">
         <div className="postman-sidebar__section">
-          <div className="postman-sidebar__section-header postman-sidebar__section-header--active">
+          <button
+            type="button"
+            className={`postman-sidebar__section-header ${
+              activeView === "insights" ? "postman-sidebar__section-header--active" : ""
+            }`}
+            onClick={() => onSelectView("insights")}
+            data-testid="insights-nav"
+          >
+            <ChartLineIcon size={16} weight="bold" />
+            <span>Insights</span>
+          </button>
+        </div>
+
+        <div className="postman-sidebar__section">
+          <button
+            type="button"
+            className={`postman-sidebar__section-header ${
+              activeView === "traffic" ? "postman-sidebar__section-header--active" : ""
+            }`}
+            onClick={() => onSelectView("traffic")}
+          >
             <GlobeSimpleIcon size={16} weight="bold" />
             <span>Captured Traffic</span>
             <span className="postman-badge">{flows.length}</span>
-          </div>
+          </button>
           <div className="postman-sidebar__list">
             {flows.length === 0 ? (
               <div className="postman-sidebar__empty">
@@ -48,7 +75,10 @@ export function Sidebar({
                   key={flow.id}
                   type="button"
                   className={`postman-sidebar__item ${selectedId === flow.id ? "postman-sidebar__item--active" : ""}`}
-                  onClick={() => onSelect(flow.id)}
+                  onClick={() => {
+                    onSelectView("traffic");
+                    onSelect(flow.id);
+                  }}
                 >
                   <div className="postman-sidebar__item-method">
                     <span className={`postman-method-badge postman-method-badge--${(flow.method || "GET").toLowerCase()}`}>
