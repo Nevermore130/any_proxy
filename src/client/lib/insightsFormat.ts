@@ -47,7 +47,7 @@ export function formatChange(value: number | null): string | null {
 }
 
 export function changeTone(
-  kind: "requests" | "latency" | "errors",
+  kind: "requests" | "latency" | "errors" | "passRate",
   changePercent: number | null
 ): "good" | "bad" | "neutral" | "none" {
   if (changePercent == null) {
@@ -56,10 +56,60 @@ export function changeTone(
   if (changePercent === 0) {
     return "neutral";
   }
-  if (kind === "requests") {
-    return changePercent > 0 ? "good" : "neutral";
+  if (kind === "requests" || kind === "passRate") {
+    return changePercent > 0 ? "good" : kind === "passRate" ? "bad" : "neutral";
   }
   return changePercent > 0 ? "bad" : "good";
+}
+
+export function formatRelativeTime(value: string | null, now = Date.now()): string {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return "—";
+  }
+
+  const deltaMs = now - parsed;
+  if (deltaMs < 10_000) {
+    return "just now";
+  }
+
+  const seconds = Math.floor(deltaMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return minutes === 1 ? "1 min ago" : `${minutes} mins ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return hours === 1 ? "1h ago" : `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1d ago" : `${days}d ago`;
+}
+
+export function formatClock(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function trimFloat(value: number): string {

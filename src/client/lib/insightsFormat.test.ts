@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   changeTone,
   formatChange,
+  formatClock,
   formatCount,
   formatLatency,
   formatRate,
+  formatRelativeTime,
   windowLabel
 } from "./insightsFormat.js";
 
@@ -29,6 +31,18 @@ describe("insights format helpers", () => {
     expect(changeTone("errors", 20)).toBe("bad");
     expect(changeTone("errors", 0)).toBe("neutral");
     expect(changeTone("errors", null)).toBe("none");
+    expect(changeTone("passRate", 2)).toBe("good");
+    expect(changeTone("passRate", -2)).toBe("bad");
+  });
+
+  it("formats relative last-run times", () => {
+    const now = Date.parse("2026-09-05T12:00:00.000Z");
+    expect(formatRelativeTime("2026-09-05T11:55:00.000Z", now)).toBe("5 mins ago");
+    expect(formatRelativeTime("2026-09-05T11:59:00.000Z", now)).toBe("1 min ago");
+    expect(formatRelativeTime("2026-09-05T11:59:50.000Z", now)).toBe("10s ago");
+    expect(formatRelativeTime("2026-09-05T11:00:00.000Z", now)).toBe("1h ago");
+    expect(formatRelativeTime(null, now)).toBe("—");
+    expect(formatClock(null)).toBe("—");
   });
 
   it("labels windows", () => {

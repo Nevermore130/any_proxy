@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateInsights,
   isErrorFlow,
+  isPassFlow,
   normalizePath,
   parseInsightsWindow,
   percentile,
@@ -11,6 +12,7 @@ import {
 
 function flow(overrides: InsightsFlowInput & { startedAt?: string } = {}): InsightsFlowInput {
   return {
+    id: overrides.id ?? "flow-default",
     method: "GET",
     path: "/v1/me",
     statusCode: 200,
@@ -68,6 +70,8 @@ describe("isErrorFlow", () => {
     expect(isErrorFlow(flow({ statusCode: 503 }))).toBe(true);
     expect(isErrorFlow(flow({ statusCode: 200, error: "upstream timeout" }))).toBe(true);
     expect(isErrorFlow(flow({ statusCode: undefined, error: "  " }))).toBe(false);
+    expect(isPassFlow(flow({ statusCode: 204 }))).toBe(true);
+    expect(isPassFlow(flow({ statusCode: 200, error: "boom" }))).toBe(false);
   });
 });
 
@@ -206,6 +210,127 @@ describe("aggregateInsights", () => {
       "POST /photos/upload",
       "GET /feed"
     ]);
+    expect(overview.endpointPerformance[0]).toMatchObject({
+      method: "GET",
+      path: "/accounts/{id}/cards",
+      passRate: 50,
+      p95LatencyMs: expect.any(Number)
+    });
+  });
+
+  it("computes collection-style pass rate, runs, average, and last run", () => {
+    const overview = aggregateInsights(
+      [
+        flow({
+          id: "ok",
+          path: "/v1/me",
+          durationMs: 80,
+          startedAt: "2026-09-05T11:50:00.000Z"
+        }),
+        flow({
+          id: "err",
+          path: "/v1/me",
+          durationMs: 120,
+          statusCode: 500,
+          startedAt: "2026-09-05T11:55:00.000Z"
+        }),
+        flow({
+          id: "older",
+          path: "/v1/me",
+          durationMs: 40,
+          startedAt: "2026-09-05T10:30:00.000Z"
+        })
+      ],
+      { window: "1h", now }
+    );
+
+    expect(overview.collectionHealth.totalRuns.value).toBe(2);
+    expect(overview.collectionHealth.passRate.value).toBe(50);
+    expect(overview.collectionHealth.passRate.previousValue).toBe(100);
+    expect(overview.collectionHealth.passRate.changePercent).toBe(-50);
+    expect(overview.collectionHealth.avgResponseMs.value).toBe(100);
+    expect(overview.collectionHealth.lastRunAt).toBe("2026-09-05T11:55:00.000Z");
+  });
+
+  it("builds error volume, samples, latency series, and distributions", () => {
+    const overview = aggregateInsights(
+      [
+        flow({
+          id: "slow-ok",
+          method: "GET",
+          path: "/accounts/11",
+          durationMs: 400,
+          startedAt: "2026-09-05T11:40:00.000Z"
+        }),
+        flow({
+          id: "fail-500",
+          method: "GET",
+          path: "/accounts/11",
+          statusCode: 500,
+          durationMs: 220,
+          startedAt: "2026-09-05T11:50:00.000Z"
+        }),
+        flow({
+          id: "fail-timeout",
+          method: "POST",
+          path: "/photos/upload?x=1",
+          statusCode: 200,
+          error: "upstream timeout",
+          durationMs: 80,
+          startedAt: "2026-09-05T11:58:00.000Z"
+        }),
+        flow({
+          id: "fast-ok",
+          method: "GET",
+          path: "/feed",
+          durationMs: 30,
+          startedAt: "2026-09-05T11:59:00.000Z"
+        })
+      ],
+      { window: "1h", now }
+    );
+
+    expect(overview.errors.volume).toHaveLength(12);
+    expect(overview.errors.volume.reduce((sum, point) => sum + point.value, 0)).toBe(2);
+    expect(overview.errors.topFailing.map((row) => `${row.method} ${row.path}`)).toEqual([
+      "POST /photos/upload",
+      "GET /accounts/{id}"
+    ]);
+    expect(overview.errors.recentSamples).toEqual([
+      expect.objectContaining({
+        id: "fail-timeout",
+        method: "POST",
+        path: "/photos/upload",
+        statusCode: 200,
+        error: "upstream timeout",
+        startedAt: "2026-09-05T11:58:00.000Z"
+      }),
+      expect.objectContaining({
+        id: "fail-500",
+        method: "GET",
+        path: "/accounts/11",
+        statusCode: 500
+      })
+    ]);
+
+    expect(overview.latency.avg).toHaveLength(12);
+    expect(overview.latency.p90).toHaveLength(12);
+    expect(overview.latency.slowest[0]).toMatchObject({
+      method: "GET",
+      path: "/accounts/{id}",
+      avgLatencyMs: 310
+    });
+    expect(overview.latency.statusDistribution).toEqual([
+      { label: "2xx", count: 3 },
+      { label: "3xx", count: 0 },
+      { label: "4xx", count: 0 },
+      { label: "5xx", count: 1 },
+      { label: "Other", count: 0 }
+    ]);
+    expect(overview.latency.latencyDistribution.find((bucket) => bucket.label === "200–500 ms")?.count).toBe(
+      2
+    );
+    expect(overview.latency.latencyDistribution.find((bucket) => bucket.label === "<50 ms")?.count).toBe(1);
   });
 
   it("includes untimestamped flows only in the all-retained window", () => {

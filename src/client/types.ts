@@ -126,8 +126,30 @@ export type InsightsEndpoint = {
   requestCount: number;
   errorCount: number;
   errorRate: number;
+  passRate: number;
   avgLatencyMs: number | null;
   p90LatencyMs: number | null;
+  p95LatencyMs: number | null;
+};
+
+export type InsightsSeriesPoint = {
+  t: string;
+  value: number;
+};
+
+export type InsightsErrorSample = {
+  id: string | null;
+  method: string;
+  path: string;
+  statusCode: number | null;
+  error?: string;
+  startedAt: string | null;
+  durationMs: number | null;
+};
+
+export type InsightsNamedCount = {
+  label: string;
+  count: number;
 };
 
 export type InsightsOverview = {
@@ -143,10 +165,30 @@ export type InsightsOverview = {
     p90LatencyMs: InsightsMetric;
     errors: InsightsMetric;
   };
+  collectionHealth: {
+    passRate: InsightsMetric;
+    totalRuns: InsightsMetric;
+    avgResponseMs: InsightsMetric;
+    lastRunAt: string | null;
+  };
   endpointHealth: {
     monitoredCount: number;
     mostErrors: InsightsEndpoint[];
     busiest: InsightsEndpoint[];
+  };
+  endpointPerformance: InsightsEndpoint[];
+  errors: {
+    volume: InsightsSeriesPoint[];
+    previousVolume: InsightsSeriesPoint[];
+    topFailing: InsightsEndpoint[];
+    recentSamples: InsightsErrorSample[];
+  };
+  latency: {
+    avg: InsightsSeriesPoint[];
+    p90: InsightsSeriesPoint[];
+    slowest: InsightsEndpoint[];
+    statusDistribution: InsightsNamedCount[];
+    latencyDistribution: InsightsNamedCount[];
   };
 };
 
